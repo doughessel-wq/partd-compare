@@ -93,7 +93,7 @@ details{font-size:.92rem} details p{margin-top:8px;max-width:75ch}
 
 <div class="wrap">
   <header class="top">
-    <h1>California Part D Compare <span class="muted" style="font-weight:500">· 2027 plans</span></h1>
+    <h1>California Part D Compare <span class="muted" style="font-weight:500">· {{YEAR}} plans</span></h1>
     <p class="notice">Independent estimates from CMS public data. Not Medicare.gov, and not an enrollment site.</p>
   </header>
   <ol class="steps" id="steps"></ol>
@@ -230,7 +230,7 @@ function cmpCol(e){ if(!e)return '<div><p class="muted">Tick “Compare” on a 
   const p=e.plan,mx=Math.max(...e.months,1),ch=stChip[e.st];
   return `<div><div><h3>${esc(p.name)}</h3><p class="small muted">${esc(p.org)} · ${p.type==='PDP'?'Part D drug plan':'Medicare Advantage'} · ${esc(p.id)}</p></div>
   <div>${stars(p)} <span class="small muted">${p.star!=null?esc(p.starKind):''}</span></div>
-  <div><p class="small muted">Estimated total for 2027</p><p class="big num">${usd(e.total,0)}${e.unk?'<span style="font-size:1rem"> + unpriced drugs</span>':''}</p></div>
+  <div><p class="small muted">Estimated total for {{YEAR}}</p><p class="big num">${usd(e.total,0)}${e.unk?'<span style="font-size:1rem"> + unpriced drugs</span>':''}</p></div>
   <dl class="kv"><dt>Premiums (${usd(p.prem,2)} × 12)</dt><dd>${usd(e.prem,2)}</dd><dt>Your share of drug costs</dt><dd>${usd(e.drug,2)}</dd><dt>Drug deductible</dt><dd>${usd(p.ded,0)}</dd><dt>Drugs on the plan’s list</dt><dd>${e.covered} of ${e.per.length}</dd></dl>
   <p><span class="chip ${ch[0]}">${ch[1]}</span>${e.st==='out'?' <span class="small">Full price assumed for every fill.</span>':''}</p>
   <div><p class="small muted">Your drug costs month by month</p><div class="bars" role="img" aria-label="Monthly drug costs, January to December: ${e.months.map(m=>usd(m,0)).join(', ')}">${e.months.map(m=>`<span style="height:${Math.round(m/mx*100)}%" title="${usd(m,2)}"></span>`).join('')}</div><div class="barlab">${'JFMAMJJASOND'.split('').map(c=>`<span>${c}</span>`).join('')}</div>
@@ -264,11 +264,11 @@ function vRes(){
       return `<li class="${on?'on':''}"><div style="min-width:0;display:grid;gap:4px"><h3>${esc(p.name)}</h3>
       <div class="meta"><span>${esc(p.org)}</span>${stars(p)}<span class="chip ${ch[0]}">${ch[1]}</span>${e.covered<e.per.length?`<span class="chip bad">${e.per.length-e.covered} drug${e.per.length-e.covered===1?'':'s'} not covered</span>`:''}${p.snp?`<span class="chip warn">${['','Chronic condition SNP','Dual-eligible SNP','Institutional SNP'][p.snp]}</span>`:''}</div>
       <div class="meta num"><span>Premium ${usd(p.prem,2)}/month</span><span>Deductible ${usd(p.ded,0)}</span><span>Drug costs ${usd(e.drug,0)}/year</span></div></div>
-      <div class="tot"><b class="num">${usd(e.total,0)}${e.unk?'+':''}</b><span class="small muted">estimated for 2027</span><label style="justify-content:flex-end;margin-top:6px"><input type="checkbox" data-c="${esc(p.id)}" ${on?'checked':''}> Compare</label></div></li>`}).join('')||'<li>No plans match. Try a different coverage type.</li>'}</ul></section>
+      <div class="tot"><b class="num">${usd(e.total,0)}${e.unk?'+':''}</b><span class="small muted">estimated for {{YEAR}}</span><label style="justify-content:flex-end;margin-top:6px"><input type="checkbox" data-c="${esc(p.id)}" ${on?'checked':''}> Compare</label></div></li>`}).join('')||'<li>No plans match. Try a different coverage type.</li>'}</ul></section>
   <details class="card"><summary><b>How these estimates are worked out, and what they leave out</b></summary>
-    <p>Plans, premiums, deductibles, drug lists, tiers, copays and pharmacy networks come from the CMS 2027 Prescription Drug Plan Formulary and Pharmacy Network file (${esc(D.meta.planFile)}). Star ratings are the CMS 2027 Star Ratings: the Part D rating for drug plans and the overall rating for Medicare Advantage plans.</p>
-    <p><b>Drug prices are estimates.</b> CMS has not yet published 2027 plan prices, so each drug uses the median price across California plans in the ${esc(D.meta.priceFile)} file. Real prices differ by plan and pharmacy, which matters most for drugs with a percentage cost share and before the deductible is met.</p>
-    <p>Each estimate assumes one 30-day retail fill of every drug in each month of 2027, the plan deductible where it applies to the drug’s tier, the ${usd(CAP,0)} yearly cap on what you pay for covered drugs, and the $35 monthly cap on covered insulin. A pharmacy outside the plan’s network, or a drug not on the plan’s list, is charged at full price.</p>
+    <p>Plans, premiums, deductibles, drug lists, tiers, copays and pharmacy networks come from the CMS {{YEAR}} Prescription Drug Plan Formulary and Pharmacy Network file (${esc(D.meta.planFile)}). Star ratings are the CMS {{YEAR}} Star Ratings: the Part D rating for drug plans and the overall rating for Medicare Advantage plans.</p>
+    <p><b>Drug prices are estimates.</b> ${esc(D.meta.priceNote)} Real prices differ by plan and pharmacy, which matters most for drugs with a percentage cost share and before the deductible is met.</p>
+    <p>Each estimate assumes one 30-day retail fill of every drug in each month of {{YEAR}}, the plan deductible where it applies to the drug’s tier, the ${usd(CAP,0)} yearly cap on what you pay for covered drugs, and the $35 monthly cap on covered insulin. A pharmacy outside the plan’s network, or a drug not on the plan’s list, is charged at full price.</p>
     <p>Left out: Extra Help and other assistance, mail order and 90-day fills, late-enrollment penalties, income-related premium surcharges, and medical costs. For Medicare Advantage plans the premium is the figure in the CMS drug plan file. ZIP codes are matched to counties with the Census ZIP Code Tabulation Area table, which can differ from postal ZIP codes at the edges. Pharmacy names come from the CMS provider registry.</p>
     <p>Confirm costs with the plan or at Medicare.gov before enrolling.</p></details>
   <div class="row"><button class="btn ghost" id="back">Back</button></div></div>`;
