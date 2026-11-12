@@ -1,0 +1,283 @@
+<title>California Part D Compare</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap">
+<style>
+/* Layout: one calm column. A five-question interview, then a ranked plan list with a two-plan side-by-side on top. */
+:root{
+  --bg:#f1f5f4; --surface:#ffffff; --ink:#14262b; --muted:#506469; --line:#cdd9d7;
+  --accent:#0b6468; --accent-ink:#ffffff; --soft:#e0efed; --star:#b3741a;
+  --good:#1b7443; --warn:#8f5400; --bad:#a5312a; --warn-bg:#fdf3dc; --bad-bg:#fbe9e7; --good-bg:#e3f3e9;
+  --display:"Bricolage Grotesque","Atkinson Hyperlegible",system-ui,sans-serif;
+  --body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0e191b; --surface:#16262a; --ink:#e7f0ef; --muted:#9fb3b5; --line:#2c4144;
+  --accent:#62c6c3; --accent-ink:#05282a; --soft:#1c3539; --star:#e4b24e;
+  --good:#74d29c; --warn:#e6b062; --bad:#f29187; --warn-bg:#33290f; --bad-bg:#3a1c19; --good-bg:#16321f; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0e191b; --surface:#16262a; --ink:#e7f0ef; --muted:#9fb3b5; --line:#2c4144;
+  --accent:#62c6c3; --accent-ink:#05282a; --soft:#1c3539; --star:#e4b24e;
+  --good:#74d29c; --warn:#e6b062; --bad:#f29187; --warn-bg:#33290f; --bad-bg:#3a1c19; --good-bg:#16321f; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:17px/1.5 var(--body);margin:0}
+.wrap{max-width:1040px;margin:0 auto;padding-block:20px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:20px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:1.55rem} h2{font-size:1.5rem} h3{font-size:1.1rem}
+p{margin:0} .muted{color:var(--muted)} .small{font-size:.87rem} .num{font-variant-numeric:tabular-nums}
+header.top{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;justify-content:space-between}
+.notice{font-size:.87rem;color:var(--muted)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:11px 20px;font-weight:700;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--accent);border:1.5px solid var(--accent)}
+.btn.link{background:none;border:0;color:var(--accent);padding:0;font-weight:700;text-decoration:underline;cursor:pointer}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.steps{display:flex;gap:6px;list-style:none;margin:0;padding:0;flex-wrap:wrap}
+.steps li{flex:1 1 90px;min-width:0}
+.steps button{width:100%;text-align:left;background:none;border:0;border-top:4px solid var(--line);padding:6px 2px 0;font-size:.85rem;color:var(--muted);cursor:pointer}
+.steps .done button{border-color:var(--accent);color:var(--ink)}
+.steps .cur button{border-color:var(--accent);color:var(--ink);font-weight:700}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:24px;display:flex;flex-direction:column;gap:16px}
+.q-help{color:var(--muted);max-width:62ch}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.row.end{justify-content:space-between}
+input[type=text],input[type=number],select{background:var(--surface);border:1.5px solid var(--muted);border-radius:8px;padding:10px 12px;min-width:0}
+input.zip{width:9ch;font-size:1.3rem;letter-spacing:.08em}
+.opts{display:grid;gap:10px}
+.opt{display:flex;gap:12px;align-items:flex-start;border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;cursor:pointer}
+.opt:has(input:checked){border-color:var(--accent);background:var(--soft)}
+.opt input{margin-top:5px;accent-color:var(--accent);width:18px;height:18px;flex:none}
+.opt b{display:block}
+.search{position:relative}
+.search input{width:100%}
+.hits{list-style:none;margin:6px 0 0;padding:0;border:1px solid var(--line);border-radius:10px;max-height:300px;overflow:auto}
+.hits li button{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:10px 12px;cursor:pointer}
+.hits li:last-child button{border-bottom:0}
+.hits li button:hover,.hits li button.sel{background:var(--soft)}
+.rx{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.rx li{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;border:1px dashed var(--muted);border-radius:8px;padding:10px 12px}
+.rx .nm{flex:1 1 240px;min-width:0;font-weight:700}
+.rx input{width:8ch}
+.banner{border-radius:10px;padding:12px 14px;font-size:.93rem}
+.banner.warn{background:var(--warn-bg);color:var(--ink);border:1px solid var(--warn)}
+.banner.ex{background:var(--soft);border:1px solid var(--accent)}
+.summary{display:flex;flex-wrap:wrap;gap:8px}
+.pill{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:.87rem;cursor:pointer}
+.chip{display:inline-block;border-radius:6px;padding:1px 8px;font-size:.8rem;font-weight:700;white-space:nowrap}
+.chip.good{background:var(--good-bg);color:var(--good)} .chip.warn{background:var(--warn-bg);color:var(--warn)} .chip.bad{background:var(--bad-bg);color:var(--bad)} .chip.plain{background:var(--soft);color:var(--ink)}
+.stars{position:relative;display:inline-block;font-size:1.05rem;letter-spacing:2px;line-height:1;color:var(--line);white-space:nowrap}
+.stars i{position:absolute;left:0;top:0;overflow:hidden;color:var(--star);font-style:normal;white-space:nowrap}
+.cmp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.cmp>div{min-width:0;border:1.5px solid var(--accent);border-radius:12px;padding:18px;background:var(--surface);display:flex;flex-direction:column;gap:12px}
+.big{font-family:var(--display);font-size:2.1rem;font-weight:700;line-height:1}
+dl.kv{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:0}
+dl.kv dt{color:var(--muted)} dl.kv dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.drugs{display:grid;gap:8px}
+.drugs>div{border-top:1px solid var(--line);padding-top:8px;display:grid;gap:2px}
+.drugs .ln{display:flex;justify-content:space-between;gap:10px}
+.bars{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;align-items:end;height:70px}
+.bars span{background:var(--accent);border-radius:2px 2px 0 0;min-height:1px}
+.barlab{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;font-size:.68rem;color:var(--muted);text-align:center}
+.tools{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.plans{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.plans li{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 16px;align-items:center}
+.plans li.on{border-color:var(--accent);border-width:1.5px}
+.plans .meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.9rem;color:var(--muted);align-items:center}
+.plans .tot{text-align:right}
+.plans .tot b{font-family:var(--display);font-size:1.35rem;display:block}
+.plans label{display:flex;gap:8px;align-items:center;font-size:.9rem;cursor:pointer}
+.plans input{width:18px;height:18px;accent-color:var(--accent)}
+details{font-size:.92rem} details p{margin-top:8px;max-width:75ch}
+@media (max-width:640px){ .cmp{grid-template-columns:1fr} .card{padding:18px} .plans li{grid-template-columns:1fr} .plans .tot{text-align:left} }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>California Part D Compare <span class="muted" style="font-weight:500">· 2027 plans</span></h1>
+    <p class="notice">Independent estimates from CMS public data. Not Medicare.gov, and not an enrollment site.</p>
+  </header>
+  <ol class="steps" id="steps"></ol>
+  <main id="view"></main>
+</div>
+
+<script>const D=/*DATA*/null;</script>
+<script>
+const CAP=D.meta.cap, STEPS=['Location','Coverage','Cost help','Prescriptions','Pharmacy','Results'];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const usd=(n,d)=>'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:d??(n%1?2:0),maximumFractionDigits:d??2});
+const drugIdx=new Map(D.drugs.map((d,i)=>[d[0],i]));
+const nets=D.nets.map(n=>n.map(b=>Uint8Array.from(atob(b),c=>c.charCodeAt(0))));
+const bit=(a,i)=>(a[i>>3]>>(i&7))&1;
+function drugLabel(d){const m=d[1].match(/^(.*) \[(.+)\]$/);return m?`${m[2]} (${m[1]})`:d[1].charAt(0).toUpperCase()+d[1].slice(1)}
+
+const EX=D.meta.example;
+let S={step:0,zip:EX.zip,county:EX.county,type:'pdp',help:'none',rx:EX.rx.map(r=>({...r})),ph:EX.ph,example:true,snp:false,sort:'total',cmp:[]};
+try{const s=JSON.parse(localStorage.getItem('pdc')||'null');if(s&&s.v===D.meta.v)S=Object.assign(S,s.s)}catch(e){}
+function save(){try{localStorage.setItem('pdc',JSON.stringify({v:D.meta.v,s:S}))}catch(e){}}
+
+/* ---------- cost engine ---------- */
+function phStatus(plan,ph){ if(ph==null)return 'none'; const n=nets[plan.net]; return bit(n[1],ph)?'pref':bit(n[0],ph)?'std':'out'; }
+function share(plan,tier,st){ const cs=plan.cost[tier]; if(!cs)return null; const p=st==='pref'&&cs[0]!==0; return {type:p?cs[0]:cs[2],amt:p?cs[1]:cs[3],ded:!!cs[4]&&plan.ded>0,pref:p}; }
+function shareText(sh){ return sh.type===1?usd(sh.amt)+' copay':Math.round(sh.amt*1000)/10+'% of the drug price'; }
+function estimate(plan,rx,ph){
+  const st=phStatus(plan,ph), form=D.forms[plan.f];
+  let dedLeft=plan.ded, oop=0; const months=Array(12).fill(0);
+  const per=rx.map(r=>{const d=D.drugs[r.i],code=form[d[0]];return{d,q:r.q,full:d[2]!=null?d[2]*r.q:null,tier:code==null?null:code>>3,flags:code==null?0:code&7,total:0,unk:false,first:null,sh:null}});
+  for(let m=0;m<12;m++) for(const x of per){
+    let pay=0; const full=x.full;
+    if(st==='out'||x.tier==null){ if(full==null)x.unk=true; else pay=full; }
+    else{
+      const sh=share(plan,x.tier,st); x.sh=sh;
+      if(!sh){x.unk=true}
+      else if(oop>=CAP){pay=0}
+      else if(x.d[3]){ let v=sh.type===1?sh.amt:(full!=null?sh.amt*full:35); const ia=plan.ins&&plan.ins[x.tier]; if(ia){const a=sh.pref&&ia[0]!=null?ia[0]:ia[1]; if(a!=null)v=Math.min(v,a)} pay=Math.min(v,35,full??Infinity); }
+      else{ let rem=full;
+        if(sh.ded&&dedLeft>0){ if(full==null)x.unk=true; else{const k=Math.min(full,dedLeft);pay+=k;dedLeft-=k;rem=full-k} }
+        if(full==null){ if(sh.type===1)pay+=sh.amt; else x.unk=true }
+        else if(rem>0) pay+=sh.type===1?Math.min(sh.amt,rem):sh.amt*rem;
+      }
+      if(sh){pay=Math.min(pay,Math.max(0,CAP-oop));oop+=pay}
+    }
+    if(m===0)x.first=pay; x.total+=pay; months[m]+=pay;
+  }
+  const drug=months.reduce((a,b)=>a+b,0);
+  return {plan,st,per,months,drug,prem:plan.prem*12,total:drug+plan.prem*12,unk:per.some(x=>x.unk),covered:per.filter(x=>x.tier!=null).length,capMonth:oop>=CAP};
+}
+function plansFor(){
+  const codes=D.counties[S.county]||[];
+  return D.plans.filter(p=>{
+    if(p.type==='PDP'){ if(S.type==='ma')return false } else { if(S.type==='pdp')return false; if(!p.cty.some(c=>codes.includes(c)))return false }
+    if(p.snp&&!S.snp)return false; return true; });
+}
+
+/* ---------- rendering ---------- */
+function stars(p){ if(p.star==null)return `<span class="small muted">${esc(p.starNote||'No rating')}</span>`;
+  return `<span title="${p.star} out of 5 stars"><span class="stars" aria-hidden="true">★★★★★<i style="width:${p.star*20}%">★★★★★</i></span> <span class="small num">${p.star} of 5</span></span>`; }
+const stChip={pref:['good','Preferred pharmacy'],std:['plain','In network (standard cost)'],out:['bad','Not in network'],none:['plain','No pharmacy chosen']};
+function go(n){S.step=n;save();render();window.scrollTo(0,0)}
+function nav(back,nextLabel,ok=true){return `<div class="row end"><button class="btn ghost" id="back" ${back?'':'hidden'}>Back</button><button class="btn" id="next" ${ok?'':'disabled'}>${nextLabel||'Continue'}</button></div>`}
+function bindNav(){const b=$('#back'),n=$('#next');if(b)b.onclick=()=>go(S.step-1);if(n)n.onclick=()=>go(S.step+1)}
+function exBanner(){return S.example?`<div class="banner ex">These answers are an <b>example</b> so you can see how the tool works. <button class="btn link" id="clear">Clear and start with my own answers</button></div>`:''}
+function bindEx(){const c=$('#clear');if(c)c.onclick=()=>{S=Object.assign(S,{step:0,zip:'',county:null,type:'pdp',help:'none',rx:[],ph:null,example:false,cmp:[]});save();render()}}
+function touched(){S.example=false}
+
+function render(){
+  $('#steps').innerHTML=STEPS.map((s,i)=>`<li class="${i<S.step?'done':i===S.step?'cur':''}"><button data-s="${i}" ${i===S.step?'aria-current="step"':''}>${i+1}. ${s}</button></li>`).join('');
+  $('#steps').querySelectorAll('button').forEach(b=>b.onclick=()=>{const n=+b.dataset.s;if(n<=S.step||ready(n))go(n)});
+  [vLoc,vType,vHelp,vRx,vPh,vRes][S.step]();
+}
+function ready(n){return (n<1||!!S.county)&&(n<5||S.rx.length>0)}
+
+function vLoc(){
+  const cs=D.zips[S.zip]||[]; if(cs.length&&!cs.includes(S.county))S.county=cs[0]; if(!cs.length)S.county=null;
+  $('#view').innerHTML=`<section class="card">${exBanner()}<h2>What is your ZIP code?</h2><p class="q-help">Plans are offered by county. This tool covers California only.</p>
+  <div class="row"><input class="zip num" id="zip" type="text" inputmode="numeric" maxlength="5" autocomplete="postal-code" aria-label="ZIP code" value="${esc(S.zip||'')}"><span id="zipmsg" class="muted"></span></div>
+  <div id="cty"></div>${nav(false,'Continue',!!S.county)}</section>`;
+  const upd=()=>{const z=$('#zip').value.trim();S.zip=z;const c=D.zips[z]||[];
+    if(z.length===5&&!c.length){S.county=null;$('#zipmsg').textContent='This ZIP code is not in the California data.'}
+    else $('#zipmsg').textContent=c.length===1?c[0]+' County':'';
+    if(c.length&&!c.includes(S.county))S.county=c[0];
+    $('#cty').innerHTML=c.length>1?`<p><b>This ZIP code crosses county lines. Which county do you live in?</b></p><div class="opts">${c.map(n=>`<label class="opt"><input type="radio" name="cty" value="${esc(n)}" ${n===S.county?'checked':''}><span><b>${esc(n)} County</b></span></label>`).join('')}</div>`:'';
+    $('#cty').querySelectorAll('input').forEach(i=>i.onchange=()=>{S.county=i.value;save()});
+    $('#next').disabled=!S.county;save()};
+  $('#zip').oninput=()=>{touched();upd()}; upd(); bindNav(); bindEx();
+}
+function radios(name,opts,cur){return `<div class="opts">${opts.map(o=>`<label class="opt"><input type="radio" name="${name}" value="${o[0]}" ${o[0]===cur?'checked':''}><span><b>${o[1]}</b><span class="muted small">${o[2]||''}</span></span></label>`).join('')}</div>`}
+function vType(){
+  $('#view').innerHTML=`<section class="card"><h2>What kind of drug coverage are you looking for?</h2>
+  ${radios('type',[['pdp','A Part D drug plan','A stand-alone plan that adds drug coverage to Original Medicare.'],['ma','A Medicare Advantage plan with drug coverage','One plan for medical and drug coverage, usually with a provider network.'],['both','Show me both','']],S.type)}
+  ${nav(true)}</section>`;
+  document.querySelectorAll('[name=type]').forEach(i=>i.onchange=()=>{S.type=i.value;S.cmp=[];touched();save()}); bindNav();
+}
+function vHelp(){
+  $('#view').innerHTML=`<section class="card"><h2>Do you get help with your drug costs?</h2><p class="q-help">Programs that lower drug costs change what you pay. This tool estimates costs without that help.</p>
+  ${radios('help',[['none','I don’t get help from any of these programs',''],['medicaid','Medicaid (Medi-Cal)',''],['ssi','Supplemental Security Income (SSI)',''],['msp','A Medicare Savings Program',''],['lis','Extra Help from Social Security',''],['unsure','I’m not sure','']],S.help)}
+  ${nav(true)}</section>`;
+  document.querySelectorAll('[name=help]').forEach(i=>i.onchange=()=>{S.help=i.value;touched();save()}); bindNav();
+}
+function rxList(){return S.rx.length?`<ul class="rx">${S.rx.map((r,k)=>`<li><span class="nm">${esc(drugLabel(D.drugs[r.i]))}</span><label class="small">Quantity per 30 days <input type="number" min="1" max="999" step="1" data-k="${k}" id="q${D.drugs[r.i][0]}" value="${r.q}"></label><button class="btn link" data-rm="${k}">Remove</button></li>`).join('')}</ul>`:'<p class="muted">No prescriptions added yet.</p>'}
+function vRx(){
+  $('#view').innerHTML=`<section class="card"><h2>Which prescriptions do you take?</h2><p class="q-help">Type a drug name and strength, such as “atorvastatin 20” or “Eliquis 5”, then pick the match. Enter how many tablets or capsules you fill every 30 days. For liquids, injection pens, creams and inhalers, enter the amount in millilitres or grams.</p>
+  <div class="search"><input type="text" id="dq" placeholder="Search drugs" aria-label="Search drugs" autocomplete="off"><ul class="hits" id="dh" hidden></ul></div>
+  <div id="rxl">${rxList()}</div>${nav(true,'Continue',S.rx.length>0)}</section>`;
+  const bindList=()=>{ $('#rxl').innerHTML=rxList(); $('#next').disabled=!S.rx.length;
+    $('#rxl').querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{S.rx.splice(+b.dataset.rm,1);touched();save();bindList()});
+    $('#rxl').querySelectorAll('input').forEach(i=>i.onchange=()=>{S.rx[+i.dataset.k].q=Math.max(1,Math.min(999,+i.value||30));touched();save()}); };
+  $('#dq').oninput=e=>{const t=e.target.value.toLowerCase().split(/\s+/).filter(Boolean),h=$('#dh');
+    if(!t.join('').length||t.join('').length<2){h.hidden=true;return}
+    let out=[];for(let i=0;i<D.drugs.length;i++){const n=D.drugs[i][1].toLowerCase();if(t.every(w=>n.includes(w)))out.push(i)}
+    const rank=i=>{const l=drugLabel(D.drugs[i]).toLowerCase();return (l.startsWith(t[0])?0:1000)+l.length};out=out.sort((x,y)=>rank(x)-rank(y)).slice(0,40);
+    h.hidden=false;h.innerHTML=out.length?out.map(i=>`<li><button data-i="${i}">${esc(drugLabel(D.drugs[i]))}</button></li>`).join(''):'<li><button disabled>No match on any California plan’s drug list</button></li>';
+    h.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if(!S.rx.some(r=>r.i===i))S.rx.push({i,q:30});touched();save();$('#dq').value='';h.hidden=true;bindList()}) };
+  bindList(); bindNav();
+}
+function phLabel(i){const p=D.pharm[i];return `<b>${esc(p[0])}</b><br><span class="small muted">${esc(p[1])}, ${esc(p[2])} ${esc(p[3])}</span>`}
+function vPh(){
+  $('#view').innerHTML=`<section class="card"><h2>Where do you fill your prescriptions?</h2><p class="q-help">Plans charge less at their preferred pharmacies and may not cover a pharmacy outside their network. Search by pharmacy name, city or ZIP code.</p>
+  <div class="search"><input type="text" id="pq" placeholder="Search pharmacies" aria-label="Search pharmacies" autocomplete="off" value="${S.ph==null?esc(S.zip||''):''}"><ul class="hits" id="phh"></ul></div>
+  <div id="cur"></div>${nav(true,'See plans')}</section>`;
+  const cur=()=>{$('#cur').innerHTML=S.ph!=null?`<p class="small muted">Your pharmacy</p><p>${phLabel(S.ph)} &nbsp;<button class="btn link" id="phx">Remove</button></p>`:'<p class="muted">No pharmacy chosen. Estimates will use each plan’s standard in-network cost.</p>';
+    const x=$('#phx');if(x)x.onclick=()=>{S.ph=null;touched();save();cur();find()}};
+  const find=()=>{const raw=$('#pq').value.trim()||(S.zip||''),t=raw.toLowerCase().split(/\s+/).filter(Boolean),h=$('#phh'),out=[];
+    for(let i=0;i<D.pharm.length&&out.length<40;i++){const p=D.pharm[i],n=(p[0]+' '+p[2]+' '+p[3]).toLowerCase();if(t.every(w=>n.includes(w)))out.push(i)}
+    h.innerHTML=out.length?out.map(i=>`<li><button data-i="${i}" class="${i===S.ph?'sel':''}">${phLabel(i)}</button></li>`).join(''):'<li><button disabled>No pharmacy found</button></li>';
+    h.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{S.ph=+b.dataset.i;touched();save();cur();find()})};
+  $('#pq').oninput=find; cur(); find(); bindNav();
+}
+
+function cmpCol(e){ if(!e)return '<div><p class="muted">Tick “Compare” on a plan below to show it here.</p></div>';
+  const p=e.plan,mx=Math.max(...e.months,1),ch=stChip[e.st];
+  return `<div><div><h3>${esc(p.name)}</h3><p class="small muted">${esc(p.org)} · ${p.type==='PDP'?'Part D drug plan':'Medicare Advantage'} · ${esc(p.id)}</p></div>
+  <div>${stars(p)} <span class="small muted">${p.star!=null?esc(p.starKind):''}</span></div>
+  <div><p class="small muted">Estimated total for 2027</p><p class="big num">${usd(e.total,0)}${e.unk?'<span style="font-size:1rem"> + unpriced drugs</span>':''}</p></div>
+  <dl class="kv"><dt>Premiums (${usd(p.prem,2)} × 12)</dt><dd>${usd(e.prem,2)}</dd><dt>Your share of drug costs</dt><dd>${usd(e.drug,2)}</dd><dt>Drug deductible</dt><dd>${usd(p.ded,0)}</dd><dt>Drugs on the plan’s list</dt><dd>${e.covered} of ${e.per.length}</dd></dl>
+  <p><span class="chip ${ch[0]}">${ch[1]}</span>${e.st==='out'?' <span class="small">Full price assumed for every fill.</span>':''}</p>
+  <div><p class="small muted">Your drug costs month by month</p><div class="bars" role="img" aria-label="Monthly drug costs, January to December: ${e.months.map(m=>usd(m,0)).join(', ')}">${e.months.map(m=>`<span style="height:${Math.round(m/mx*100)}%" title="${usd(m,2)}"></span>`).join('')}</div><div class="barlab">${'JFMAMJJASOND'.split('').map(c=>`<span>${c}</span>`).join('')}</div>
+  <p class="small muted">January ${usd(e.months[0],2)} · December ${usd(e.months[11],2)}${e.capMonth?' · reaches the '+usd(CAP,0)+' yearly cap':''}</p></div>
+  <div class="drugs">${e.per.map(x=>{const fl=['Quantity limit','Prior authorization','Step therapy'].filter((_,b)=>x.flags>>b&1);
+    return `<div><div class="ln"><b>${esc(drugLabel(x.d))}</b><b class="num">${x.unk?'n/a':usd(x.total,2)}</b></div>
+    <div class="small muted">${x.tier==null?'<span class="chip bad">Not on the plan’s drug list</span> You pay full price.':`Tier ${x.tier}${x.sh&&e.st!=='out'?' · '+shareText(x.sh)+(x.sh.ded?' after the deductible':''):''}${x.d[3]?' · insulin, capped at $35':''}`}${x.full==null?' · no price on file':''}</div>
+    ${fl.length?`<div class="small">${fl.map(f=>`<span class="chip warn">${f}</span>`).join(' ')}</div>`:''}</div>`}).join('')}</div></div>`; }
+function vRes(){
+  const list=plansFor().map(p=>estimate(p,S.rx,S.ph));
+  const sorts={total:(a,b)=>a.total-b.total,prem:(a,b)=>a.plan.prem-b.plan.prem||a.total-b.total,star:(a,b)=>(b.plan.star??0)-(a.plan.star??0)||a.total-b.total};
+  list.sort(sorts[S.sort]);
+  const ids=new Set(list.map(e=>e.plan.id)); S.cmp=S.cmp.filter(i=>ids.has(i));
+  if(!S.cmp.length){S.cmp=[...list].sort(sorts.total).slice(0,2).map(e=>e.plan.id)}
+  const by=Object.fromEntries(list.map(e=>[e.plan.id,e]));
+  const nSnp=D.plans.filter(p=>p.snp&&(p.type==='PDP'?S.type!=='ma':S.type!=='pdp'&&p.cty.some(c=>(D.counties[S.county]||[]).includes(c)))).length;
+  $('#view').innerHTML=`<div style="display:flex;flex-direction:column;gap:20px">
+  ${S.example?`<div class="banner ex">Example results for a made-up person in ${esc(S.zip)}. <button class="btn link" id="clear">Clear and start with my own answers</button></div>`:''}
+  <div class="summary">
+    <button class="pill" data-go="0">${esc(S.zip)} · ${esc(S.county)} County</button>
+    <button class="pill" data-go="1">${{pdp:'Part D drug plans',ma:'Medicare Advantage',both:'All plan types'}[S.type]}</button>
+    <button class="pill" data-go="3">${S.rx.length} prescription${S.rx.length===1?'':'s'}</button>
+    <button class="pill" data-go="4">${S.ph!=null?esc(D.pharm[S.ph][0]):'No pharmacy chosen'}</button></div>
+  ${S.help!=='none'?`<div class="banner warn"><b>These estimates do not include help with costs.</b> If you get Medi-Cal, SSI, a Medicare Savings Program or Extra Help, your premiums and drug costs will be lower than shown.</div>`:''}
+  <section style="display:flex;flex-direction:column;gap:12px"><h2>Side by side</h2><p class="muted small">Starts with the two lowest-cost plans. Tick “Compare” on any two plans in the list to change it.</p>
+    <div class="cmp">${cmpCol(by[S.cmp[0]])}${cmpCol(by[S.cmp[1]])}</div></section>
+  <section style="display:flex;flex-direction:column;gap:12px"><h2>${list.length} plan${list.length===1?'':'s'} available</h2>
+    <div class="tools"><label>Sort by <select id="sort"><option value="total">Lowest estimated yearly cost</option><option value="prem">Lowest premium</option><option value="star">Highest star rating</option></select></label>
+    ${nSnp?`<label><input type="checkbox" id="snp" ${S.snp?'checked':''}> Include ${nSnp} Special Needs Plan${nSnp===1?'':'s'}</label>`:''}</div>
+    <ul class="plans">${list.map(e=>{const p=e.plan,ch=stChip[e.st],on=S.cmp.includes(p.id);
+      return `<li class="${on?'on':''}"><div style="min-width:0;display:grid;gap:4px"><h3>${esc(p.name)}</h3>
+      <div class="meta"><span>${esc(p.org)}</span>${stars(p)}<span class="chip ${ch[0]}">${ch[1]}</span>${e.covered<e.per.length?`<span class="chip bad">${e.per.length-e.covered} drug${e.per.length-e.covered===1?'':'s'} not covered</span>`:''}${p.snp?`<span class="chip warn">${['','Chronic condition SNP','Dual-eligible SNP','Institutional SNP'][p.snp]}</span>`:''}</div>
+      <div class="meta num"><span>Premium ${usd(p.prem,2)}/month</span><span>Deductible ${usd(p.ded,0)}</span><span>Drug costs ${usd(e.drug,0)}/year</span></div></div>
+      <div class="tot"><b class="num">${usd(e.total,0)}${e.unk?'+':''}</b><span class="small muted">estimated for 2027</span><label style="justify-content:flex-end;margin-top:6px"><input type="checkbox" data-c="${esc(p.id)}" ${on?'checked':''}> Compare</label></div></li>`}).join('')||'<li>No plans match. Try a different coverage type.</li>'}</ul></section>
+  <details class="card"><summary><b>How these estimates are worked out, and what they leave out</b></summary>
+    <p>Plans, premiums, deductibles, drug lists, tiers, copays and pharmacy networks come from the CMS 2027 Prescription Drug Plan Formulary and Pharmacy Network file (${esc(D.meta.planFile)}). Star ratings are the CMS 2027 Star Ratings: the Part D rating for drug plans and the overall rating for Medicare Advantage plans.</p>
+    <p><b>Drug prices are estimates.</b> CMS has not yet published 2027 plan prices, so each drug uses the median price across California plans in the ${esc(D.meta.priceFile)} file. Real prices differ by plan and pharmacy, which matters most for drugs with a percentage cost share and before the deductible is met.</p>
+    <p>Each estimate assumes one 30-day retail fill of every drug in each month of 2027, the plan deductible where it applies to the drug’s tier, the ${usd(CAP,0)} yearly cap on what you pay for covered drugs, and the $35 monthly cap on covered insulin. A pharmacy outside the plan’s network, or a drug not on the plan’s list, is charged at full price.</p>
+    <p>Left out: Extra Help and other assistance, mail order and 90-day fills, late-enrollment penalties, income-related premium surcharges, and medical costs. For Medicare Advantage plans the premium is the figure in the CMS drug plan file. ZIP codes are matched to counties with the Census ZIP Code Tabulation Area table, which can differ from postal ZIP codes at the edges. Pharmacy names come from the CMS provider registry.</p>
+    <p>Confirm costs with the plan or at Medicare.gov before enrolling.</p></details>
+  <div class="row"><button class="btn ghost" id="back">Back</button></div></div>`;
+  $('#sort').value=S.sort; $('#sort').onchange=e=>{S.sort=e.target.value;save();vRes()};
+  const sn=$('#snp'); if(sn)sn.onchange=()=>{S.snp=sn.checked;save();vRes()};
+  document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(+b.dataset.go));
+  document.querySelectorAll('[data-c]').forEach(c=>c.onchange=()=>{const id=c.dataset.c;if(c.checked){S.cmp.push(id);if(S.cmp.length>2)S.cmp.shift()}else S.cmp=S.cmp.filter(i=>i!==id);save();vRes()});
+  bindNav(); bindEx();
+}
+if(S.step===5&&!ready(5))S.step=0;
+render();
+</script>
