@@ -1,20 +1,46 @@
 {
   "plan_year": 2027,
   "out_of_pocket_cap": 2400,
+  "extra_help_copays": {
+    "standard": {
+      "generic": 5.8,
+      "brand": 14.4
+    },
+    "lower": {
+      "generic": 1.65,
+      "brand": 5.0
+    }
+  },
   "example": {
     "zip": "95003",
     "county": "Santa Cruz",
     "prescriptions": [
-      {"rxcui": "617310", "quantity": 30},
-      {"rxcui": "314076", "quantity": 30},
-      {"rxcui": "861007", "quantity": 60},
-      {"rxcui": "1364447", "quantity": 60},
-      {"rxcui": "1545664", "quantity": 30}
+      {
+        "rxcui": "617310",
+        "quantity": 30
+      },
+      {
+        "rxcui": "314076",
+        "quantity": 30
+      },
+      {
+        "rxcui": "861007",
+        "quantity": 60
+      },
+      {
+        "rxcui": "1364447",
+        "quantity": 60
+      },
+      {
+        "rxcui": "1545664",
+        "quantity": 30
+      }
     ]
   },
   "url_overrides": {
     "monthly_zip": "",
     "quarterly_zip": "",
-    "star_ratings_zip": ""
+    "star_ratings_zip": "",
+    "landscape_zip": ""
   }
 }

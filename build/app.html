@@ -115,13 +115,17 @@ const EX=D.meta.example;
 let S={step:0,zip:EX.zip,county:EX.county,type:'pdp',help:'none',rx:EX.rx.map(r=>({...r})),ph:EX.ph,example:true,snp:false,sort:'total',cmp:[]};
 try{const s=JSON.parse(localStorage.getItem('pdc')||'null');if(s&&s.v===D.meta.v)S=Object.assign(S,s.s)}catch(e){}
 function save(){try{localStorage.setItem('pdc',JSON.stringify({v:D.meta.v,s:S}))}catch(e){}}
+const LIS=D.meta.lis, PROG=['medicaid','ssi','msp','lis'];
+const lisDefault=h=>({medicaid:'low',ssi:'low'}[h]||'std');
+function lisLevel(){return PROG.includes(S.help)?(S.lvl||lisDefault(S.help)):null}
+const lisCap=(lv,d)=>lv==='zero'?0:LIS[lv][d[4]?0:1];
 
 /* ---------- cost engine ---------- */
 function phStatus(plan,ph){ if(ph==null)return 'none'; const n=nets[plan.net]; return bit(n[1],ph)?'pref':bit(n[0],ph)?'std':'out'; }
 function share(plan,tier,st){ const cs=plan.cost[tier]; if(!cs)return null; const p=st==='pref'&&cs[0]!==0; return {type:p?cs[0]:cs[2],amt:p?cs[1]:cs[3],ded:!!cs[4]&&plan.ded>0,pref:p}; }
 function shareText(sh){ return sh.type===1?usd(sh.amt)+' copay':Math.round(sh.amt*1000)/10+'% of the drug price'; }
 function estimate(plan,rx,ph){
-  const st=phStatus(plan,ph), form=D.forms[plan.f];
+  const st=phStatus(plan,ph), form=D.forms[plan.f], lv=lisLevel();
   let dedLeft=plan.ded, oop=0; const months=Array(12).fill(0);
   const per=rx.map(r=>{const d=D.drugs[r.i],code=form[d[0]];return{d,q:r.q,full:d[2]!=null?d[2]*r.q:null,tier:code==null?null:code>>3,flags:code==null?0:code&7,total:0,unk:false,first:null,sh:null}});
   for(let m=0;m<12;m++) for(const x of per){
@@ -137,12 +141,14 @@ function estimate(plan,rx,ph){
         if(full==null){ if(sh.type===1)pay+=sh.amt; else x.unk=true }
         else if(rem>0) pay+=sh.type===1?Math.min(sh.amt,rem):sh.amt*rem;
       }
-      if(sh){pay=Math.min(pay,Math.max(0,CAP-oop));oop+=pay}
+      if(sh){const capped=oop>=CAP;pay=Math.min(pay,Math.max(0,CAP-oop));oop+=pay;
+        if(lv){const c=lisCap(lv,x.d);pay=(x.unk&&!capped)?c:Math.min(pay,c);x.unk=false}}
     }
     if(m===0)x.first=pay; x.total+=pay; months[m]+=pay;
   }
   const drug=months.reduce((a,b)=>a+b,0);
-  return {plan,st,per,months,drug,prem:plan.prem*12,total:drug+plan.prem*12,unk:per.some(x=>x.unk),covered:per.filter(x=>x.tier!=null).length,capMonth:oop>=CAP};
+  const premMo=lv&&plan.premLis!=null?plan.premLis:plan.prem;
+  return {plan,st,per,months,drug,lv,premMo,prem:premMo*12,total:drug+premMo*12,unk:per.some(x=>x.unk),covered:per.filter(x=>x.tier!=null).length,capMonth:oop>=CAP};
 }
 function plansFor(){
   const codes=D.counties[S.county]||[];
@@ -191,10 +197,16 @@ function vType(){
   document.querySelectorAll('[name=type]').forEach(i=>i.onchange=()=>{S.type=i.value;S.cmp=[];touched();save()}); bindNav();
 }
 function vHelp(){
-  $('#view').innerHTML=`<section class="card"><h2>Do you get help with your drug costs?</h2><p class="q-help">Programs that lower drug costs change what you pay. This tool estimates costs without that help.</p>
+  $('#view').innerHTML=`<section class="card"><h2>Do you get help with your drug costs?</h2><p class="q-help">People in any of these programs get Extra Help, which lowers premiums, removes the drug deductible and caps copays.</p>
   ${radios('help',[['none','I don’t get help from any of these programs',''],['medicaid','Medicaid (Medi-Cal)',''],['ssi','Supplemental Security Income (SSI)',''],['msp','A Medicare Savings Program',''],['lis','Extra Help from Social Security',''],['unsure','I’m not sure','']],S.help)}
-  ${nav(true)}</section>`;
-  document.querySelectorAll('[name=help]').forEach(i=>i.onchange=()=>{S.help=i.value;touched();save()}); bindNav();
+  <div id="lvl"></div>${nav(true)}</section>`;
+  const lvl=()=>{const on=PROG.includes(S.help);
+    $('#lvl').innerHTML=on?`<p><b>Which copay level do you have?</b></p><p class="q-help">Your Extra Help or plan notice lists your copays. The most common level for your answer is already selected.</p>`+radios('lvl',[
+      ['std','Standard Extra Help copays','Up to '+usd(LIS.std[0],2)+' for generics and '+usd(LIS.std[1],2)+' for brand-name drugs.'],
+      ['low','Lower copays','Up to '+usd(LIS.low[0],2)+' for generics and '+usd(LIS.low[1],2)+' for brand-name drugs. For people with full Medi-Cal and income at or below the federal poverty level.'],
+      ['zero','$0 copays','For people with full Medi-Cal who live in a nursing home or get home and community-based services.']],lisLevel()):'';
+    document.querySelectorAll('[name=lvl]').forEach(i=>i.onchange=()=>{S.lvl=i.value;touched();save()})};
+  document.querySelectorAll('[name=help]').forEach(i=>i.onchange=()=>{S.help=i.value;S.lvl=null;touched();save();lvl()}); lvl(); bindNav();
 }
 function rxList(){return S.rx.length?`<ul class="rx">${S.rx.map((r,k)=>`<li><span class="nm">${esc(drugLabel(D.drugs[r.i]))}</span><label class="small">Quantity per 30 days <input type="number" min="1" max="999" step="1" data-k="${k}" id="q${D.drugs[r.i][0]}" value="${r.q}"></label><button class="btn link" data-rm="${k}">Remove</button></li>`).join('')}</ul>`:'<p class="muted">No prescriptions added yet.</p>'}
 function vRx(){
@@ -231,17 +243,17 @@ function cmpCol(e){ if(!e)return '<div><p class="muted">Tick “Compare” on a 
   return `<div><div><h3>${esc(p.name)}</h3><p class="small muted">${esc(p.org)} · ${p.type==='PDP'?'Part D drug plan':'Medicare Advantage'} · ${esc(p.id)}</p></div>
   <div>${stars(p)} <span class="small muted">${p.star!=null?esc(p.starKind):''}</span></div>
   <div><p class="small muted">Estimated total for {{YEAR}}</p><p class="big num">${usd(e.total,0)}${e.unk?'<span style="font-size:1rem"> + unpriced drugs</span>':''}</p></div>
-  <dl class="kv"><dt>Premiums (${usd(p.prem,2)} × 12)</dt><dd>${usd(e.prem,2)}</dd><dt>Your share of drug costs</dt><dd>${usd(e.drug,2)}</dd><dt>Drug deductible</dt><dd>${usd(p.ded,0)}</dd><dt>Drugs on the plan’s list</dt><dd>${e.covered} of ${e.per.length}</dd></dl>
+  <dl class="kv"><dt>Premiums (${usd(e.premMo,2)} × 12)</dt><dd>${usd(e.prem,2)}</dd><dt>Your share of drug costs</dt><dd>${usd(e.drug,2)}</dd><dt>Drug deductible</dt><dd>${e.lv?'$0 with Extra Help':usd(p.ded,0)}</dd><dt>Drugs on the plan’s list</dt><dd>${e.covered} of ${e.per.length}</dd></dl>
   <p><span class="chip ${ch[0]}">${ch[1]}</span>${e.st==='out'?' <span class="small">Full price assumed for every fill.</span>':''}</p>
   <div><p class="small muted">Your drug costs month by month</p><div class="bars" role="img" aria-label="Monthly drug costs, January to December: ${e.months.map(m=>usd(m,0)).join(', ')}">${e.months.map(m=>`<span style="height:${Math.round(m/mx*100)}%" title="${usd(m,2)}"></span>`).join('')}</div><div class="barlab">${'JFMAMJJASOND'.split('').map(c=>`<span>${c}</span>`).join('')}</div>
   <p class="small muted">January ${usd(e.months[0],2)} · December ${usd(e.months[11],2)}${e.capMonth?' · reaches the '+usd(CAP,0)+' yearly cap':''}</p></div>
   <div class="drugs">${e.per.map(x=>{const fl=['Quantity limit','Prior authorization','Step therapy'].filter((_,b)=>x.flags>>b&1);
     return `<div><div class="ln"><b>${esc(drugLabel(x.d))}</b><b class="num">${x.unk?'n/a':usd(x.total,2)}</b></div>
-    <div class="small muted">${x.tier==null?'<span class="chip bad">Not on the plan’s drug list</span> You pay full price.':`Tier ${x.tier}${x.sh&&e.st!=='out'?' · '+shareText(x.sh)+(x.sh.ded?' after the deductible':''):''}${x.d[3]?' · insulin, capped at $35':''}`}${x.full==null?' · no price on file':''}</div>
+    <div class="small muted">${x.tier==null?'<span class="chip bad">Not on the plan’s drug list</span> You pay full price.':`Tier ${x.tier}${x.sh&&e.st!=='out'?' · '+(e.lv?'Extra Help copay, '+(e.lv==='zero'?'$0':'up to '+usd(lisCap(e.lv,x.d),2)+(x.d[4]?' (generic)':' (brand)')):shareText(x.sh)+(x.sh.ded?' after the deductible':'')):''}${x.d[3]?' · insulin, capped at $35':''}`}${x.full==null?' · no price on file':''}</div>
     ${fl.length?`<div class="small">${fl.map(f=>`<span class="chip warn">${f}</span>`).join(' ')}</div>`:''}</div>`}).join('')}</div></div>`; }
 function vRes(){
   const list=plansFor().map(p=>estimate(p,S.rx,S.ph));
-  const sorts={total:(a,b)=>a.total-b.total,prem:(a,b)=>a.plan.prem-b.plan.prem||a.total-b.total,star:(a,b)=>(b.plan.star??0)-(a.plan.star??0)||a.total-b.total};
+  const sorts={total:(a,b)=>a.total-b.total,prem:(a,b)=>a.premMo-b.premMo||a.total-b.total,star:(a,b)=>(b.plan.star??0)-(a.plan.star??0)||a.total-b.total};
   list.sort(sorts[S.sort]);
   const ids=new Set(list.map(e=>e.plan.id)); S.cmp=S.cmp.filter(i=>ids.has(i));
   if(!S.cmp.length){S.cmp=[...list].sort(sorts.total).slice(0,2).map(e=>e.plan.id)}
@@ -254,7 +266,7 @@ function vRes(){
     <button class="pill" data-go="1">${{pdp:'Part D drug plans',ma:'Medicare Advantage',both:'All plan types'}[S.type]}</button>
     <button class="pill" data-go="3">${S.rx.length} prescription${S.rx.length===1?'':'s'}</button>
     <button class="pill" data-go="4">${S.ph!=null?esc(D.pharm[S.ph][0]):'No pharmacy chosen'}</button></div>
-  ${S.help!=='none'?`<div class="banner warn"><b>These estimates do not include help with costs.</b> If you get Medi-Cal, SSI, a Medicare Savings Program or Extra Help, your premiums and drug costs will be lower than shown.</div>`:''}
+  ${lisLevel()?`<div class="banner ex"><b>These estimates include Extra Help.</b> ${{zero:'$0 copays',low:'Copays of up to '+usd(LIS.low[0],2)+' for generics and '+usd(LIS.low[1],2)+' for brand-name drugs',std:'Copays of up to '+usd(LIS.std[0],2)+' for generics and '+usd(LIS.std[1],2)+' for brand-name drugs'}[lisLevel()]}, no drug deductible, and each plan’s reduced premium. <button class="btn link" data-go="2">Change</button></div>`:S.help==='unsure'?`<div class="banner warn"><b>These estimates do not include help with costs.</b> If you get Medi-Cal, SSI, a Medicare Savings Program or Extra Help, your premiums and drug costs will be lower than shown. <button class="btn link" data-go="2">Choose a program</button> to see estimates with that help.</div>`:''}
   <section style="display:flex;flex-direction:column;gap:12px"><h2>Side by side</h2><p class="muted small">Starts with the two lowest-cost plans. Tick “Compare” on any two plans in the list to change it.</p>
     <div class="cmp">${cmpCol(by[S.cmp[0]])}${cmpCol(by[S.cmp[1]])}</div></section>
   <section style="display:flex;flex-direction:column;gap:12px"><h2>${list.length} plan${list.length===1?'':'s'} available</h2>
@@ -263,13 +275,14 @@ function vRes(){
     <ul class="plans">${list.map(e=>{const p=e.plan,ch=stChip[e.st],on=S.cmp.includes(p.id);
       return `<li class="${on?'on':''}"><div style="min-width:0;display:grid;gap:4px"><h3>${esc(p.name)}</h3>
       <div class="meta"><span>${esc(p.org)}</span>${stars(p)}<span class="chip ${ch[0]}">${ch[1]}</span>${e.covered<e.per.length?`<span class="chip bad">${e.per.length-e.covered} drug${e.per.length-e.covered===1?'':'s'} not covered</span>`:''}${p.snp?`<span class="chip warn">${['','Chronic condition SNP','Dual-eligible SNP','Institutional SNP'][p.snp]}</span>`:''}</div>
-      <div class="meta num"><span>Premium ${usd(p.prem,2)}/month</span><span>Deductible ${usd(p.ded,0)}</span><span>Drug costs ${usd(e.drug,0)}/year</span></div></div>
+      <div class="meta num"><span>Premium ${usd(e.premMo,2)}/month</span><span>Deductible ${usd(e.lv?0:p.ded,0)}</span><span>Drug costs ${usd(e.drug,0)}/year</span></div></div>
       <div class="tot"><b class="num">${usd(e.total,0)}${e.unk?'+':''}</b><span class="small muted">estimated for {{YEAR}}</span><label style="justify-content:flex-end;margin-top:6px"><input type="checkbox" data-c="${esc(p.id)}" ${on?'checked':''}> Compare</label></div></li>`}).join('')||'<li>No plans match. Try a different coverage type.</li>'}</ul></section>
   <details class="card"><summary><b>How these estimates are worked out, and what they leave out</b></summary>
-    <p>Plans, premiums, deductibles, drug lists, tiers, copays and pharmacy networks come from the CMS {{YEAR}} Prescription Drug Plan Formulary and Pharmacy Network file (${esc(D.meta.planFile)}). Star ratings are the CMS {{YEAR}} Star Ratings: the Part D rating for drug plans and the overall rating for Medicare Advantage plans.</p>
+    <p>Plans, deductibles, drug lists, tiers, copays and pharmacy networks come from the CMS {{YEAR}} Prescription Drug Plan Formulary and Pharmacy Network file (${esc(D.meta.planFile)}). Premiums come from the CMS {{YEAR}} landscape file (${esc(D.meta.landscapeFile)}). Star ratings are the CMS {{YEAR}} Star Ratings: the Part D rating for drug plans and the overall rating for Medicare Advantage plans.</p>
     <p><b>Drug prices are estimates.</b> ${esc(D.meta.priceNote)} Real prices differ by plan and pharmacy, which matters most for drugs with a percentage cost share and before the deductible is met.</p>
     <p>Each estimate assumes one 30-day retail fill of every drug in each month of {{YEAR}}, the plan deductible where it applies to the drug’s tier, the ${usd(CAP,0)} yearly cap on what you pay for covered drugs, and the $35 monthly cap on covered insulin. A pharmacy outside the plan’s network, or a drug not on the plan’s list, is charged at full price.</p>
-    <p>Left out: Extra Help and other assistance, mail order and 90-day fills, late-enrollment penalties, income-related premium surcharges, and medical costs. For Medicare Advantage plans the premium is the figure in the CMS drug plan file. ZIP codes are matched to counties with the Census ZIP Code Tabulation Area table, which can differ from postal ZIP codes at the edges. Pharmacy names come from the CMS provider registry.</p>
+    <p><b>Extra Help.</b> When you choose a program in step 3, each plan uses its premium for people with the full subsidy from the CMS landscape file, the drug deductible is removed, and each covered fill costs the lower of the plan’s price and the {{YEAR}} Extra Help copay for your level. The yearly cap is reached at the same point it would be without Extra Help, after which covered drugs cost $0. Generic and brand copays follow whether RxNorm lists the drug as generic or brand, which can differ from how a plan classifies it.</p>
+    <p>Left out: the Medicare Part B premium, mail order and 90-day fills, late-enrollment penalties, income-related premium surcharges, state help beyond Extra Help, and medical costs. For Medicare Advantage plans the premium is the plan’s combined medical and drug premium from the CMS landscape file. ZIP codes are matched to counties with the Census ZIP Code Tabulation Area table, which can differ from postal ZIP codes at the edges. Pharmacy names come from the CMS provider registry.</p>
     <p>Confirm costs with the plan or at Medicare.gov before enrolling.</p></details>
   <div class="row"><button class="btn ghost" id="back">Back</button></div></div>`;
   $('#sort').value=S.sort; $('#sort').onchange=e=>{S.sort=e.target.value;save();vRes()};

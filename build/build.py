@@ -16,6 +16,7 @@ CACHE = os.path.join(ROOT, '.cache')
 UA = {'User-Agent': 'Mozilla/5.0 (partd-compare build)'}
 CATALOG = 'https://data.cms.gov/data.json'
 STARS_PAGE = 'https://www.cms.gov/medicare/health-drug-plans/part-c-d-performance-data'
+LANDSCAPE_PAGE = 'https://www.cms.gov/medicare/coverage/prescription-drug-coverage'
 RXNORM = 'https://rxnav.nlm.nih.gov/REST/allconcepts.json?tty=SCD+SBD+GPCK+BPCK'
 ZCTA = 'https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/tab20_zcta520_county20_natl.txt'
 NPI_API = 'https://npiregistry.cms.hhs.gov/api/?version=2.1&'
@@ -105,7 +106,40 @@ def discover(cfg, refresh):
         if not links:
             raise SystemExit(f'No {year} star ratings data tables on the CMS page.')
         stars = 'https://www.cms.gov' + links[0]
-    return monthly, quarterly, stars, mdate
+    land = ov.get('landscape_zip')
+    if not land:
+        html = open(fetch(LANDSCAPE_PAGE, 'landscape_page.html', refresh=True), encoding='utf-8', errors='replace').read()
+        links = sorted(set(re.findall(rf'href="(/files/zip/cy{year}-landscape-[^"]*\.zip)"', html)))
+        if not links:
+            raise SystemExit(f'No CY{year} landscape file on the CMS page.')
+        land = 'https://www.cms.gov' + links[-1]
+    return monthly, quarterly, stars, land, mdate
+
+
+def money(s):
+    """'$1,234.50 ' -> 1234.5, '($14.20)' -> -14.2, anything else -> None."""
+    t = s.strip().replace('$', '').replace(',', '')
+    neg = t.startswith('(') and t.endswith(')')
+    try:
+        return -float(t[1:-1]) if neg else float(t)
+    except ValueError:
+        return None
+
+
+def landscape(path):
+    """Premiums per California plan from the CMS landscape file."""
+    z = zipfile.ZipFile(path)
+    name = [n for n in z.namelist() if n.lower().endswith('.csv')]
+    if not name:
+        raise SystemExit('No CSV inside the landscape zip.')
+    out = {}
+    for r in csv.DictReader(io.TextIOWrapper(z.open(name[0]), encoding='utf-8-sig', errors='replace')):
+        if r['State Territory Abbreviation'] != 'CA':
+            continue
+        k = (r['Contract ID'], r['Plan ID'].zfill(3), r['Segment ID'].zfill(3))
+        out[k] = dict(d=money(r['Part D Total Premium']), lis=money(r['Part D Low Income Beneficiary Premium Amount']),
+                      c=money(r['Part C Premium']), both=money(r['Monthly Consolidated Premium (Part C + D)']))
+    return out
 
 
 # ---------- pharmacy networks ----------
@@ -217,9 +251,9 @@ def main():
     os.makedirs(CACHE, exist_ok=True)
 
     log('1/7 Finding the latest CMS files')
-    m_url, q_url, s_url, m_date = discover(cfg, args.refresh)
-    monthly, quarterly, stars_zip = fetch(m_url), fetch(q_url), fetch(s_url)
-    log('   plans:  ', os.path.basename(monthly)); log('   prices: ', os.path.basename(quarterly)); log('   stars:  ', os.path.basename(stars_zip))
+    m_url, q_url, s_url, l_url, m_date = discover(cfg, args.refresh)
+    monthly, quarterly, stars_zip, land_zip = fetch(m_url), fetch(q_url), fetch(s_url), fetch(l_url)
+    log('   plans:  ', os.path.basename(monthly)); log('   prices: ', os.path.basename(quarterly)); log('   stars:  ', os.path.basename(stars_zip)); log('   premiums:', os.path.basename(land_zip))
 
     log('2/7 Plans, drug lists and cost sharing')
     plan_rows = [r for r in table(monthly, 'plan information') if is_ca(r)]
@@ -254,7 +288,11 @@ def main():
     for r in table(monthly, 'geographic locator'):
         if r['STATENAME'].strip() == 'California' and '(Partial)' not in r['COUNTY']:
             geo[r['COUNTY'].strip()].append(r['COUNTY_CODE'])
-    log(f'   {len(groups)} plans, {len(forms)} drug lists')
+    land = landscape(land_zip)
+    no_land = [k for k in groups if k not in land]
+    differ = [k for k, rs in groups.items() if k in land and land[k]['d'] is not None and abs(land[k]['d'] - float(rs[0]['PREMIUM'])) > 0.005]
+    log(f'   {len(groups)} plans, {len(forms)} drug lists; {len(no_land)} plans missing from the landscape file, '
+        f'{len(differ)} with a different drug premium there')
 
     log('3/7 Pharmacy networks (the slow step)')
     net, pref, pzip = networks(monthly, plans_set)
@@ -290,8 +328,10 @@ def main():
     log(f'   {len(med):,} priced products from plan year {price_year}')
 
     log('5/7 Drug names, star ratings, ZIP codes')
-    rxn = {c['rxcui']: c['name'] for c in json.load(open(fetch(RXNORM, 'rxnorm.json', args.refresh)))['minConceptGroup']['minConcept']}
-    drugs = sorted(([rc, rxn.get(rc, f'Unnamed drug (RxNorm {rc})'), price(rc), 1 if 'insulin' in rxn.get(rc, '').lower() else 0] for rc in rx_ndc),
+    concepts = json.load(open(fetch(RXNORM, 'rxnorm.json', args.refresh)))['minConceptGroup']['minConcept']
+    rxn = {c['rxcui']: c['name'] for c in concepts}
+    generic = {c['rxcui'] for c in concepts if c['tty'] in ('SCD', 'GPCK')}
+    drugs = sorted(([rc, rxn.get(rc, f'Unnamed drug (RxNorm {rc})'), price(rc), 1 if 'insulin' in rxn.get(rc, '').lower() else 0, 1 if rc in generic else 0] for rc in rx_ndc),
                    key=lambda d: d[1].lower())
     sz = zipfile.ZipFile(stars_zip)
     sname = [n for n in sz.namelist() if 'summary rating' in n.lower() and n.lower().endswith('.csv')]
@@ -342,8 +382,15 @@ def main():
         nk = (frozenset(net.get(k, ())), frozenset(pref.get(k, ())))
         if nk not in nkey:
             nkey[nk] = len(nets); nets.append([bits(nk[0]), bits(nk[1])])
+        prem, prem_lis, L = float(r['PREMIUM']), None, land.get(k)
+        if L:
+            part_c = 0.0 if pdp else (L['c'] or 0.0)
+            if not pdp and L['both'] is not None:
+                prem = L['both']
+            if L['lis'] is not None:
+                prem_lis = round(part_c + L['lis'], 2)
         plans.append(dict(id='-'.join(k), name=r['PLAN_NAME'].strip(), org=(s[c_name] if s else r['CONTRACT_NAME']).strip(),
-                          type='PDP' if pdp else 'MA', snp=int(r['SNP'] or 0), f=fidx[r['FORMULARY_ID']], prem=float(r['PREMIUM']),
+                          type='PDP' if pdp else 'MA', snp=int(r['SNP'] or 0), f=fidx[r['FORMULARY_ID']], prem=prem, premLis=prem_lis,
                           ded=float(r['DEDUCTIBLE']), cty=None if pdp else sorted({x['COUNTY_CODE'] for x in rs}), star=star,
                           starKind=kind, starNote=note, net=nkey[nk], cost=cost[k], ins=insulin.get(k, {})))
     di = {d[0]: i for i, d in enumerate(drugs)}
@@ -353,7 +400,10 @@ def main():
     q_name = os.path.basename(quarterly)
     price_note = (f'Each drug uses the median price across California plans in the CMS {price_year} pricing file ({q_name}).' if price_year == year else
                   f'CMS has not yet published {year} plan prices, so each drug uses the median price across California plans in the {price_year} CMS pricing file ({q_name}).')
-    data = dict(meta=dict(v=f'{year}-{os.path.basename(monthly)}', year=year, cap=cfg['out_of_pocket_cap'],
+    eh = cfg['extra_help_copays']
+    data = dict(meta=dict(v=f'{year}-{os.path.basename(monthly)}-eh', year=year, cap=cfg['out_of_pocket_cap'],
+                          lis=dict(std=[eh['standard']['generic'], eh['standard']['brand']], low=[eh['lower']['generic'], eh['lower']['brand']]),
+                          landscapeFile=os.path.basename(land_zip),
                           planFile=(f'release of {m_date}, ' if m_date else '') + os.path.basename(monthly), priceNote=price_note,
                           example=dict(zip=ex['zip'], county=ex['county'], ph=ex_ph,
                                        rx=[dict(i=di[x['rxcui']], q=x['quantity']) for x in ex['prescriptions'] if x['rxcui'] in di])),

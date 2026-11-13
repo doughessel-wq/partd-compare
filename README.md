@@ -45,6 +45,7 @@ of plans, drugs and pharmacies when it finishes.
 | --- | --- |
 | `plan_year` | The plan year to build. The build stops if CMS has no file for it yet. |
 | `out_of_pocket_cap` | The yearly cap on what a member pays for covered drugs. Set by CMS each year; check it when changing `plan_year`. |
+| `extra_help_copays` | The Extra Help (low-income subsidy) copay limits for generics and brand-name drugs, at the standard and lower levels. Set by CMS each year. |
 | `example` | The sample ZIP code and prescriptions the app opens with. |
 | `url_overrides` | Leave blank to use the newest files. Paste a direct zip link to pin a specific CMS release. |
 
@@ -60,11 +61,16 @@ of plans, drugs and pharmacies when it finishes.
 - CMS Monthly Prescription Drug Plan Formulary and Pharmacy Network Information (data.cms.gov)
 - CMS Quarterly Prescription Drug Plan Formulary, Pharmacy Network, and Pricing Information (data.cms.gov)
 - CMS Star Ratings data tables (cms.gov)
+- CMS Landscape file (cms.gov) for premiums: combined medical and drug premiums for Medicare Advantage plans, and each plan's premium with Extra Help
 - NLM RxNorm for drug names, CMS NPI Registry for pharmacy names, Census ZCTA-to-county table for ZIP codes
+
+The yearly values in `config.json` come from Table V-2 of the CMS rate announcement for the plan year
+(for 2027: https://www.cms.gov/files/document/2027-announcement.pdf).
 
 ## Known limits
 
 - Drug prices are the median across California plans, not each plan's own price.
-- Help with costs (Extra Help, Medi-Cal and similar) is not modelled.
+- Extra Help is modelled as the full subsidy at one of three copay levels the user picks. Generic versus brand copays follow RxNorm, which can differ from a plan's own classification. Other state or pharmacy assistance is not modelled.
+- The Medicare Part B premium is not included.
 - Only 30-day retail fills are estimated.
 - The $35 insulin cap is fixed in `build/app.html`.
