@@ -4,8 +4,12 @@ A single-page tool that estimates Medicare Part D costs for California plans.
 People answer five questions, add their prescriptions and pharmacy, and compare
 estimated yearly costs and star ratings across plans.
 
-`index.html` is the finished app with all data embedded. Open it in a browser
-or upload it to any static web host.
+**Live app: https://doughessel-wq.github.io/partd-compare/**
+
+`index.html` is the finished app with all data embedded. GitHub Pages serves it
+from the `main` branch, so every push to `main` updates the live app within a
+minute or two. It can also be opened directly in a browser or uploaded to any
+other static web host.
 
 Estimates only. Not affiliated with Medicare.gov.
 
