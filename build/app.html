@@ -248,7 +248,7 @@ function vHelp(){
    so each name also carries its mcg equivalents, and numbers in a search must match a whole number in the name. */
 const MCG=[], HAY=D.drugs.map((d,i)=>{const n=d[1].toLowerCase(),m=[];
   n.replace(/(\d*\.\d+) mg/g,(_,v)=>{if(+v<1){const x=String(+(+v*1000).toFixed(3));if(!m.includes(x))m.push(x)}return ''});
-  MCG[i]=m.length?m:null; return n+m.map(x=>' '+x+' mcg').join('')});
+  const show=m.filter(x=>+x<500); MCG[i]=show.length?show:null; return n+m.map(x=>' '+x+' mcg').join('')});
 const mcgNote=d=>{const m=MCG[drugIdx.get(d[0])];return m?' · '+m.join(', ')+' mcg':''};
 function drugTokens(q){return q.toLowerCase().replace(/[µμ]g|\bug\b|micrograms?/g,'mcg').replace(/milligrams?/g,'mg').replace(/,/g,' ')
   .replace(/(\d)\s*(mcg|mg|ml|units?|unt)\b/g,'$1 $2').replace(/\bunits?\b/g,'unt').split(/\s+/).filter(Boolean)}
