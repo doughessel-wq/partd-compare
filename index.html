@@ -183,7 +183,7 @@ function estimate(plan,rx,ph){
   const premMo=lv&&plan.premLis!=null?plan.premLis:plan.prem;
   return {plan,st,per,months,drug,lv,premMo,prem:premMo*12,total:drug+premMo*12,unk:per.some(x=>x.unk),covered:per.filter(x=>x.tier!=null).length,capMonth:oop>=CAP};
 }
-const mediCal=()=>S.help==='medicaid';
+const mediCal=()=>S.help==='medicaid'||S.help==='ssi'; /* SSI recipients in California get Medi-Cal automatically */
 function snpShown(p){return p.snp===2&&mediCal()?S.dsnp!==false:!!S.snp}
 function plansFor(){
   const codes=D.counties[S.county]||[];
@@ -393,7 +393,7 @@ function vRes(){
     <p><b>Drug prices are estimates.</b> ${esc(D.meta.priceNote)} Real prices differ by plan and pharmacy, which matters most for drugs with a percentage cost share and before the deductible is met.</p>
     <p>Each estimate assumes one 30-day retail fill of every drug in each month of 2027, the plan deductible where it applies to the drug’s tier, the ${usd(CAP,0)} yearly cap on what you pay for covered drugs, and the $35 monthly cap on covered insulin. A pharmacy outside the plan’s network, or a drug not on the plan’s list, is charged at full price.</p>
     <p><b>Extra Help.</b> When you choose a program in step 3, each plan uses its premium for people with the full subsidy from the CMS landscape file, the drug deductible is removed, and each covered fill costs the lower of the plan’s price and the 2027 Extra Help copay for your level. The yearly cap is reached at the same point it would be without Extra Help, after which covered drugs cost $0. Generic and brand copays follow whether RxNorm lists the drug as generic or brand, which can differ from how a plan classifies it.</p>
-    <p>Special Needs Plans are hidden unless you tick the box, except that plans for people with both Medicare and Medi-Cal (D-SNPs) are shown when you choose Medi-Cal in step 3. Left out: the Medicare Part B premium, mail order and 90-day fills, late-enrollment penalties, income-related premium surcharges, state help beyond Extra Help, and medical costs. For Medicare Advantage plans the premium is the plan’s combined medical and drug premium from the CMS landscape file. ZIP codes are matched to counties with the Census ZIP Code Tabulation Area table, which can differ from postal ZIP codes at the edges. Pharmacy names come from the CMS provider registry.</p>
+    <p>Special Needs Plans are hidden unless you tick the box, except that plans for people with both Medicare and Medi-Cal (D-SNPs) are shown when you choose Medi-Cal or SSI in step 3. Left out: the Medicare Part B premium, mail order and 90-day fills, late-enrollment penalties, income-related premium surcharges, state help beyond Extra Help, and medical costs. For Medicare Advantage plans the premium is the plan’s combined medical and drug premium from the CMS landscape file. ZIP codes are matched to counties with the Census ZIP Code Tabulation Area table, which can differ from postal ZIP codes at the edges. Pharmacy names come from the CMS provider registry.</p>
     <p>Confirm costs with the plan or at Medicare.gov before enrolling.</p></details>
   <div class="row end"><button class="btn ghost" id="back">Back</button>${newBtn()}</div>
   ${printDoc(S.cmp.map(i=>by[i]).filter(Boolean))}</div>`;
