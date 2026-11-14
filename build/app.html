@@ -93,28 +93,31 @@ dl.kv dt{color:var(--muted)} dl.kv dd{margin:0;text-align:right;font-variant-num
 details{font-size:.92rem} details p{margin-top:8px;max-width:75ch}
 .printonly{display:none}
 .sidehead{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+#printdoc{font:9.5pt/1.3 var(--body);color:#000;background:#fff}
+#printdoc h1{font-size:16pt} #printdoc h2{font-size:10.5pt;margin:8pt 0 3pt;border-bottom:1.2pt solid #000;padding-bottom:2pt}
+#printdoc table{border-collapse:collapse;width:100%;table-layout:fixed}
+#printdoc th,#printdoc td{border:.6pt solid #888;padding:2pt 5pt;text-align:left;vertical-align:top;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+#printdoc thead th{font-weight:700;border-bottom:1.2pt solid #000}
+#printdoc tbody th{font-weight:400;width:27%}
+#printdoc tr{break-inside:avoid}
+#printdoc .tot td{font-size:12.5pt;font-weight:700}
+#printdoc .mo th,#printdoc .mo td{text-align:right;padding:2pt;font-size:8.5pt}
+#printdoc .mo th:first-child,#printdoc .mo td:first-child{text-align:left;width:19%}
+#printdoc .meta{display:flex;justify-content:space-between;gap:12pt;margin:3pt 0 0}
+#printdoc .ans{display:grid;grid-template-columns:auto 1fr;gap:1pt 12pt;margin:0}
+#printdoc .ans dt{font-weight:700} #printdoc .ans dd{margin:0}
+#printdoc .fine{font-size:8pt;margin-top:7pt}
+#printdoc .fine p{margin:0 0 2pt;max-width:none}
+#printdoc small{font-size:8.5pt}
 @media print{
-  @page{margin:11mm 13mm}
+  @page{size:letter;margin:11mm 13mm}
   :root:root{--bg:#fff;--surface:#fff;--ink:#000;--muted:#333;--line:#888;--accent:#000;--soft:#fff;--star:#000;color-scheme:light}
-  body{font-size:9.5pt;line-height:1.3;background:#fff}
+  :root{padding:0!important}
+  body{background:#fff}
   .wrap{max-width:none;padding:0;gap:0}
   .wrap>header,.steps,.results>*:not(#printdoc){display:none!important}
+  .results{display:block!important}
   #printdoc{display:block}
-  #printdoc h1{font-size:17pt} #printdoc h2{font-size:11pt;margin:9pt 0 3pt;border-bottom:1.2pt solid #000;padding-bottom:2pt}
-  #printdoc table{border-collapse:collapse;width:100%;table-layout:fixed}
-  #printdoc th,#printdoc td{border:.6pt solid #888;padding:2.5pt 5pt;text-align:left;vertical-align:top;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-  #printdoc thead th{font-weight:700;border-bottom:1.2pt solid #000}
-  #printdoc tbody th{font-weight:400;width:27%}
-  #printdoc tr{break-inside:avoid}
-  #printdoc .tot td{font-size:13pt;font-weight:700}
-  #printdoc .mo th,#printdoc .mo td{text-align:right;padding:3pt 2pt;font-size:8.5pt}
-  #printdoc .mo th:first-child,#printdoc .mo td:first-child{text-align:left;width:19%}
-  #printdoc .meta{display:flex;justify-content:space-between;gap:12pt;margin:3pt 0 0}
-  #printdoc .ans{display:grid;grid-template-columns:auto 1fr;gap:2pt 12pt;margin:0}
-  #printdoc .ans dt{font-weight:700} #printdoc .ans dd{margin:0}
-  #printdoc .fine{font-size:8.5pt;margin-top:10pt}
-  #printdoc .fine p{margin:0 0 3pt}
-  #printdoc small{font-size:8.5pt}
 }
 @media (max-width:640px){ .cmp{grid-template-columns:1fr} .card{padding:18px} .plans li{grid-template-columns:1fr} .plans .tot{text-align:left} }
 </style>
@@ -300,8 +303,7 @@ function printDoc(es){
   <table><thead><tr><th></th>${es.map(e=>`<th scope="col">${esc(e.plan.name)}<br><small>${esc(e.plan.org)} · ${e.plan.type==='PDP'?'Part D drug plan':'Medicare Advantage'} · ${esc(e.plan.id)}</small></th>`).join('')}</tr></thead><tbody>
   ${row('Estimated total for '+yr,e=>usd(e.total,0)+(e.unk?' + unpriced drugs':''),'tot')}
   ${row('Star rating',e=>e.plan.star!=null?e.plan.star+' of 5 stars <small>('+esc(e.plan.starKind)+')</small>':esc(e.plan.starNote||'Not rated'))}
-  ${row('Monthly premium',e=>usd(e.premMo,2))}
-  ${row('Premiums for the year',e=>usd(e.prem,2))}
+  ${row('Premium',e=>usd(e.premMo,2)+' a month · '+usd(e.prem,2)+' for the year')}
   ${row('Your share of drug costs',e=>usd(e.drug,2))}
   ${row('Drug deductible',e=>e.lv?'$0 with Extra Help':usd(e.plan.ded,0))}
   ${row('Your pharmacy',e=>stChip[e.st][1])}
@@ -324,9 +326,22 @@ function printDoc(es){
   <dt>Pharmacy</dt><dd>${ph?esc(ph[0])+', '+esc(ph[1])+', '+esc(ph[2])+' '+esc(ph[3]):'None chosen. Standard in-network costs used.'}</dd></dl>
   ${body}
   <div class="fine"><p><b>These are estimates, not quotes.</b> ${esc(D.meta.priceNote)} Real prices differ by plan and pharmacy.</p>
-  <p>Each estimate assumes one 30-day retail fill of every drug in each month of ${yr}, the ${usd(CAP,0)} yearly cap on what you pay for covered drugs, and the $35 monthly cap on covered insulin. It leaves out the Medicare Part B premium, mail order and 90-day fills, late-enrollment penalties and medical costs.</p>
-  <p>Plan data: CMS ${yr} formulary, pharmacy network, landscape and star ratings files. Not affiliated with Medicare.gov. Confirm costs with the plan or at Medicare.gov before enrolling.</p></div></section>`;
+  <p>Each estimate assumes one 30-day retail fill of every drug each month, the ${usd(CAP,0)} yearly cap on covered drug costs and the $35 monthly insulin cap. It leaves out the Part B premium, mail order, 90-day fills, late-enrollment penalties and medical costs. Plan data: CMS ${yr} public files. Not affiliated with Medicare.gov. Confirm costs with the plan or at Medicare.gov before enrolling.</p></div></section>`;
 }
+const PAGE_W=8.5*96-2*13*96/25.4, PAGE_H=11*96-2*11*96/25.4;
+function fitPrint(){
+  const d=$('#printdoc'); if(!d)return 1;
+  let k=1; const keep=d.getAttribute('style')||'';
+  for(let i=0;i<4;i++){
+    d.style.cssText='display:block;position:absolute;left:-99999px;top:0;visibility:hidden;width:'+(PAGE_W/k)+'px';
+    const h=d.offsetHeight*k, room=PAGE_H*0.975;
+    if(h<=room)break;
+    k=Math.max(0.5,k*Math.min(0.98,Math.sqrt(room/h)));
+  }
+  d.style.cssText=keep; d.style.zoom=k; d.dataset.scale=k.toFixed(2);
+  return k;
+}
+window.addEventListener('beforeprint',fitPrint);
 function vRes(){
   const list=plansFor().map(p=>estimate(p,S.rx,S.ph));
   const sorts={total:(a,b)=>a.total-b.total,prem:(a,b)=>a.premMo-b.premMo||a.total-b.total,star:(a,b)=>(b.plan.star??0)-(a.plan.star??0)||a.total-b.total};
@@ -363,7 +378,8 @@ function vRes(){
     <p>Confirm costs with the plan or at Medicare.gov before enrolling.</p></details>
   <div class="row end"><button class="btn ghost" id="back">Back</button>${newBtn()}</div>
   ${printDoc(S.cmp.map(i=>by[i]).filter(Boolean))}</div>`;
-  const pb=$('#print'); if(pb)pb.onclick=()=>window.print();
+  const pb=$('#print'); if(pb)pb.onclick=()=>{fitPrint();window.print()};
+  fitPrint(); if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fitPrint);
   $('#sort').value=S.sort; $('#sort').onchange=e=>{S.sort=e.target.value;save();vRes()};
   const sn=$('#snp'); if(sn)sn.onchange=()=>{S.snp=sn.checked;save();vRes()};
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(+b.dataset.go));
