@@ -203,7 +203,7 @@ function estimate(plan,rx,ph,mode='r30'){
   }
   const drug=months.reduce((a,b)=>a+b,0);
   const premMo=lv&&plan.premLis!=null?plan.premLis:plan.prem;
-  return {plan,st,per,months,drug,lv,premMo,mode,overQL:per.filter(x=>x.over).length,n90:per.filter(x=>x.k===3).length,prem:premMo*12,total:drug+premMo*12,unk:per.some(x=>x.unk),covered:per.filter(x=>x.tier!=null).length,capMonth:oop>=CAP};
+  return {plan,st,per,months,drug,lv,premMo,mode,overQL:per.filter(x=>x.over).length,pa:per.filter(x=>x.tier!=null&&x.flags&2).length,n90:per.filter(x=>x.k===3).length,prem:premMo*12,total:drug+premMo*12,unk:per.some(x=>x.unk),covered:per.filter(x=>x.tier!=null).length,capMonth:oop>=CAP};
 }
 /* All three ways to fill for one plan, and the one the results use. */
 function estimateAll(plan){
@@ -341,7 +341,7 @@ function cmpCol(e){ if(!e)return '<div><p class="muted">Tick “Compare” on a 
   return `<div><div><h3>${esc(p.name)}</h3><p class="small muted">${esc(p.org)} · ${p.type==='PDP'?'Part D drug plan':'Medicare Advantage'} · ${esc(p.id)}</p></div>
   <div>${stars(p)} <span class="small muted">${p.star!=null?esc(p.starKind):''}</span></div>
   <div><p class="small muted">Estimated total for {{YEAR}}</p><p class="big num">${usd(e.total,0)}${e.unk?'<span style="font-size:1rem"> + unpriced drugs</span>':''}</p></div>
-  <dl class="kv"><dt>Premiums (${usd(e.premMo,2)} × 12)</dt><dd>${usd(e.prem,2)}</dd><dt>Your share of drug costs</dt><dd>${usd(e.drug,2)}</dd><dt>Drug deductible</dt><dd>${e.lv?'$0 with Extra Help':usd(p.ded,0)}</dd><dt>Drugs on the plan’s list</dt><dd>${e.covered} of ${e.per.length}</dd></dl>
+  <dl class="kv"><dt>Premiums (${usd(e.premMo,2)} × 12)</dt><dd>${usd(e.prem,2)}</dd><dt>Your share of drug costs</dt><dd>${usd(e.drug,2)}</dd><dt>Drug deductible</dt><dd>${e.lv?'$0 with Extra Help':usd(p.ded,0)}</dd><dt>Drugs on the plan’s list</dt><dd>${e.covered} of ${e.per.length}</dd><dt>Need the plan’s approval first (prior authorization)</dt><dd>${e.pa?e.pa+' of '+e.per.length:'None'}</dd></dl>
   <p><span class="chip ${ch[0]}">${ch[1]}</span></p>${e.st==='out'?`<p class="small">${oonNote(e)}${oonLink(e)}</p>`:''}
   <div class="ways"><p class="small muted">Ways to fill your prescriptions, estimated total for the year</p><dl class="kv">${waysRows(e,(l,v,n,on)=>`<dt${on?' class="on"':''}>${l}${on?' <span class="chip plain">shown here</span>':''}</dt><dd${on?' class="on"':''}>${v}${n?` <span class="small ${/^saves/.test(n)?'save':'muted'}">${n}</span>`:''}</dd>`).join('')}</dl></div>
   <div><p class="small muted">Your drug costs month by month</p><div class="bars" role="img" aria-label="Monthly drug costs, January to December: ${e.months.map(m=>usd(m,0)).join(', ')}">${e.months.map(m=>`<span style="height:${Math.round(m/mx*100)}%" title="${usd(m,2)}"></span>`).join('')}</div><div class="barlab">${'JFMAMJJASOND'.split('').map(c=>`<span>${c}</span>`).join('')}</div>
@@ -374,6 +374,7 @@ function printDoc(es){
   ${row('Drug deductible',e=>e.lv?'$0 with Extra Help':usd(e.plan.ded,0))}
   ${row('Your pharmacy',e=>stChip[e.st][1]+(e.st==='out'?'<br><small>'+oonNote(e,true)+'</small>':''))}
   ${row('Drugs on the plan’s list',e=>e.covered+' of '+e.per.length)}
+  ${row('Need prior authorization',e=>e.pa?e.pa+' of '+e.per.length+': '+e.per.filter(x=>x.tier!=null&&x.flags&2).map(x=>esc(drugLabel(x.d))).join('; '):'None')}
   </tbody></table>
   <h2>Your prescriptions on each plan</h2>
   <table><thead><tr><th scope="col">Prescription</th>${es.map(e=>`<th scope="col">${esc(e.plan.name)}</th>`).join('')}</tr></thead><tbody>
@@ -410,7 +411,7 @@ function fitPrint(){
 window.addEventListener('beforeprint',fitPrint);
 function vRes(){
   const list=plansFor().map(estimateAll);
-  const sorts={total:(a,b)=>a.total-b.total,prem:(a,b)=>a.premMo-b.premMo||a.total-b.total,star:(a,b)=>(b.plan.star??0)-(a.plan.star??0)||a.total-b.total};
+  const sorts={total:(a,b)=>a.total-b.total,prem:(a,b)=>a.premMo-b.premMo||a.total-b.total,star:(a,b)=>(b.plan.star??0)-(a.plan.star??0)||a.total-b.total,pa:(a,b)=>a.pa-b.pa||a.total-b.total};
   list.sort(sorts[S.sort]);
   const ids=new Set(list.map(e=>e.plan.id)); S.cmp=S.cmp.filter(i=>ids.has(i));
   if(!S.cmp.length){S.cmp=[...list].sort(sorts.total).slice(0,2).map(e=>e.plan.id)}
@@ -433,18 +434,19 @@ function vRes(){
     <div class="cmp">${cmpCol(by[S.cmp[0]])}${cmpCol(by[S.cmp[1]])}</div></section>
   <section style="display:flex;flex-direction:column;gap:12px"><h2>${list.length} plan${list.length===1?'':'s'} available</h2>
     <div class="tools"><label>Estimate with <select id="fill"><option value="r30">One-month fills at my pharmacy</option><option value="r90">Three-month fills at my pharmacy</option><option value="m90">Three-month fills by mail order</option><option value="best">Whichever is cheapest for each plan</option></select></label>
-    <label>Sort by <select id="sort"><option value="total">Lowest estimated yearly cost</option><option value="prem">Lowest premium</option><option value="star">Highest star rating</option></select></label>
+    <label>Sort by <select id="sort"><option value="total">Lowest estimated yearly cost</option><option value="prem">Lowest premium</option><option value="star">Highest star rating</option><option value="pa">Fewest prior authorizations</option></select></label>
     ${nD?`<label><input type="checkbox" id="dsnp" ${S.dsnp!==false?'checked':''}> Include ${nD} plan${nD===1?'':'s'} for people with Medicare and ${dualWho()} (D-SNP)</label>`:''}
     ${nSnp?`<label><input type="checkbox" id="snp" ${S.snp?'checked':''}> Include ${nSnp} ${nD?'other ':''}Special Needs Plan${nSnp===1?'':'s'}</label>`:''}</div>
     <ul class="plans">${list.map(e=>{const p=e.plan,ch=stChip[e.st],on=S.cmp.includes(p.id);
       return `<li class="${on?'on':''}"><div style="min-width:0;display:grid;gap:4px"><h3>${esc(p.name)}</h3>
-      <div class="meta"><span>${esc(p.org)}</span>${stars(p)}<span class="chip ${ch[0]}">${ch[1]}</span>${e.covered<e.per.length?`<span class="chip bad">${e.per.length-e.covered} drug${e.per.length-e.covered===1?'':'s'} not covered</span>`:''}${e.overQL?`<span class="chip bad">${e.overQL} drug${e.overQL===1?'':'s'} over the quantity limit</span>`:''}${p.snp?`<span class="chip warn">${['','Chronic condition SNP','Dual-eligible SNP','Institutional SNP'][p.snp]}</span>`:''}</div>
+      <div class="meta"><span>${esc(p.org)}</span>${stars(p)}<span class="chip ${ch[0]}">${ch[1]}</span>${e.covered<e.per.length?`<span class="chip bad">${e.per.length-e.covered} drug${e.per.length-e.covered===1?'':'s'} not covered</span>`:''}${e.pa?`<span class="chip warn">${e.pa} of ${e.per.length} drug${e.per.length===1?'':'s'} need${e.pa===1?'s':''} prior authorization</span>`:''}${e.overQL?`<span class="chip bad">${e.overQL} drug${e.overQL===1?'':'s'} over the quantity limit</span>`:''}${p.snp?`<span class="chip warn">${['','Chronic condition SNP','Dual-eligible SNP','Institutional SNP'][p.snp]}</span>`:''}</div>
       <div class="meta num"><span>Premium ${usd(e.premMo,2)}/month</span><span>Deductible ${usd(e.lv?0:p.ded,0)}</span><span>Drug costs ${usd(e.drug,0)}/year</span></div>${e.st==='out'&&isKaiser(p)?`<div class="small">${oonNote(e,true)}${oonLink(e)}</div>`:''}${e.best!==e.pick&&e.total-e.alt[e.best].total>=10?`<div class="small save">${FILL[e.best]} would save about ${usd(e.total-e.alt[e.best].total,0)} a year on this plan.</div>`:e.pick!=='r30'?`<div class="small muted">${FILL[e.pick]}${e.n90<e.per.length?' ('+e.n90+' of '+e.per.length+' drugs)':''}</div>`:''}</div>
       <div class="tot"><b class="num">${usd(e.total,0)}${e.unk?'+':''}</b><span class="small muted">estimated for {{YEAR}}</span><label style="justify-content:flex-end;margin-top:6px"><input type="checkbox" data-c="${esc(p.id)}" ${on?'checked':''}> Compare</label></div></li>`}).join('')||'<li>No plans match. Try a different coverage type.</li>'}</ul></section>
   <details class="card"><summary><b>How these estimates are worked out, and what they leave out</b></summary>
     <p>Plans, deductibles, drug lists, tiers, copays and pharmacy networks come from the CMS {{YEAR}} Prescription Drug Plan Formulary and Pharmacy Network file (${esc(D.meta.planFile)}). Premiums come from the CMS {{YEAR}} landscape file (${esc(D.meta.landscapeFile)}). Star ratings are the CMS {{YEAR}} Star Ratings: the Part D rating for drug plans and the overall rating for Medicare Advantage plans.</p>
     <p><b>Drug prices are estimates.</b> ${esc(D.meta.priceNote)} Real prices differ by plan and pharmacy, which matters most for drugs with a percentage cost share and before the deductible is met.</p>
     <p><b>Ways to fill.</b> Each plan is estimated three ways: a 30-day fill every month at your pharmacy, a 90-day fill every three months at your pharmacy, and a 90-day fill every three months from the plan’s mail-order pharmacy (its preferred mail pharmacy where it has one). A drug the plan does not offer as a 90-day fill stays on monthly fills. A 90-day fill is priced at three times the 30-day price, the insulin cap is $35 for each month supplied, and with Extra Help a 90-day fill costs one copay. Your doctor has to write the prescription for 90 days.</p>
+    <p><b>Prior authorization.</b> Each plan shows how many of your drugs need the plan’s approval before it will cover them, as listed in the CMS formulary file. Your prescriber asks for the approval. The count does not change the cost estimate, and a plan can turn a request down.</p>
     <p><b>Quantity limits.</b> Where a plan limits how much of a drug it covers, the limit is shown as CMS publishes it, for example 30 per 30 days. The quantity you entered is compared with that limit at the same daily rate, and a drug is flagged when you entered more. The cost estimate still assumes the full quantity is covered, which would need an exception from the plan.</p>
     <p>Each estimate assumes every drug is filled all year by the method chosen, in {{YEAR}}, the plan deductible where it applies to the drug’s tier, the ${usd(CAP,0)} yearly cap on what you pay for covered drugs, and the $35 monthly cap on covered insulin. A pharmacy outside the plan’s network, or a drug not on the plan’s list, is charged at full price.</p>
     <p><b>Extra Help.</b> When you choose a program in step 3, each plan uses its premium for people with the full subsidy from the CMS landscape file, the drug deductible is removed, and each covered fill costs the lower of the plan’s price and the {{YEAR}} Extra Help copay for your level. The yearly cap is reached at the same point it would be without Extra Help, after which covered drugs cost $0. Generic and brand copays follow whether RxNorm lists the drug as generic or brand, which can differ from how a plan classifies it.</p>
