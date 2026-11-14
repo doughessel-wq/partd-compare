@@ -358,36 +358,30 @@ def main():
     h = f.readline().decode().strip().split('|')
     i_ndc, i_days, i_cost = h.index('NDC'), h.index('DAYS_SUPPLY'), h.index('UNIT_COST')
     q_contracts = {p[0].encode() for p in q_plans}
-    # UNIT_COST is published separately for 30-, 60- and 90-day supplies; keep the 30- and 90-day prices
-    by_ndc = {b'30': collections.defaultdict(list), b'90': collections.defaultdict(list)}
+    by_ndc = collections.defaultdict(list)
     for line in f:
         if line[:5] not in q_contracts:
             continue
         x = line.rstrip().split(b'|')
-        if x[i_days] in by_ndc and (x[0].decode(), x[1].decode(), x[2].decode()) in q_plans:
-            by_ndc[x[i_days]][x[i_ndc].decode()].append(float(x[i_cost]))
+        if x[i_days] == b'30' and (x[0].decode(), x[1].decode(), x[2].decode()) in q_plans:
+            by_ndc[x[i_ndc].decode()].append(float(x[i_cost]))
     f.close(); os.remove(tmp)
+    med = {k: statistics.median(v) for k, v in by_ndc.items()}
+    by_rx = collections.defaultdict(list)
+    for n, rc in ndc_rx.items():
+        if n in med:
+            by_rx[rc].append(med[n])
 
-    def pricer(rows):
-        m = {k: statistics.median(v) for k, v in rows.items()}
-        by_rx = collections.defaultdict(list)
-        for n, rc in ndc_rx.items():
-            if n in m:
-                by_rx[rc].append(m[n])
-
-        def price(rc):
-            v = [m[n] for n in rx_ndc[rc] if n in m] or by_rx.get(rc)
-            return round(statistics.median(v), 4) if v else None
-        return m, price
-    med, price = pricer(by_ndc[b'30'])
-    med90, price90 = pricer(by_ndc[b'90'])
-    log(f'   {len(med):,} priced products from plan year {price_year} ({len(med90):,} with a 90-day price)')
+    def price(rc):
+        v = [med[n] for n in rx_ndc[rc] if n in med] or by_rx.get(rc)
+        return round(statistics.median(v), 4) if v else None
+    log(f'   {len(med):,} priced products from plan year {price_year}')
 
     log('5/7 Drug names, star ratings, ZIP codes')
     concepts = json.load(open(fetch(RXNORM, 'rxnorm.json', args.refresh)))['minConceptGroup']['minConcept']
     rxn = {c['rxcui']: c['name'] for c in concepts}
     generic = {c['rxcui'] for c in concepts if c['tty'] in ('SCD', 'GPCK')}
-    drugs = sorted(([rc, rxn.get(rc, f'Unnamed drug (RxNorm {rc})'), price(rc), 1 if 'insulin' in rxn.get(rc, '').lower() else 0, 1 if rc in generic else 0, price90(rc)] for rc in rx_ndc),
+    drugs = sorted(([rc, rxn.get(rc, f'Unnamed drug (RxNorm {rc})'), price(rc), 1 if 'insulin' in rxn.get(rc, '').lower() else 0, 1 if rc in generic else 0] for rc in rx_ndc),
                    key=lambda d: d[1].lower())
     sz = zipfile.ZipFile(stars_zip)
     sname = [n for n in sz.namelist() if 'summary rating' in n.lower() and n.lower().endswith('.csv')]
