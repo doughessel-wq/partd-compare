@@ -73,6 +73,6 @@ The yearly values in `config.json` come from Table V-2 of the CMS rate announcem
 - Drug prices are the median across California plans, not each plan's own price.
 - Extra Help is modelled as the full subsidy at one of three copay levels the user picks. Generic versus brand copays follow RxNorm, which can differ from a plan's own classification. Other state or pharmacy assistance is not modelled.
 - The Medicare Part B premium is not included.
-- Each plan is estimated for 30-day retail fills, 90-day retail fills and 90-day mail-order fills; 60-day fills are not. A 90-day fill uses the CMS 90-day price (median across California plans), and plan quantity limits are not checked against it.
+- Each plan is estimated for 30-day retail fills, 90-day retail fills and 90-day mail-order fills; 60-day fills are not. A 90-day fill uses the CMS 90-day price (median across California plans), and quantity limits are flagged but do not change the estimate.
 - Pharmacy distances are straight-line miles between ZIP code centres, not driving distance from a street address.
 - The $35 insulin cap is fixed in `build/app.html`.

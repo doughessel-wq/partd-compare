@@ -299,7 +299,14 @@ def main():
             continue
         years.add(r['CONTRACT_YEAR'])
         flags = (r['QUANTITY_LIMIT_YN'] == 'Y') | ((r['PRIOR_AUTHORIZATION_YN'] == 'Y') << 1) | ((r['STEP_THERAPY_YN'] == 'Y') << 2)
-        forms[r['FORMULARY_ID']][r['RXCUI']] = int(r['TIER_LEVEL_VALUE']) * 8 + flags
+        code = int(r['TIER_LEVEL_VALUE']) * 8 + flags
+        # a quantity limit is "amount per days", e.g. 30 per 30 days; keep it where CMS gives both numbers
+        try:
+            amt, days = float(r['QUANTITY_LIMIT_AMOUNT']), int(float(r['QUANTITY_LIMIT_DAYS']))
+            limit = [int(amt) if amt == int(amt) else amt, days] if (flags & 1 and amt > 0 and days > 0) else None
+        except ValueError:
+            limit = None
+        forms[r['FORMULARY_ID']][r['RXCUI']] = [code] + limit if limit else code
         rx_ndc.setdefault(r['RXCUI'], set()).add(r['NDC'])
     if years != {str(year)}:
         raise SystemExit(f'Monthly file is for contract year {sorted(years)}, but config.json says {year}.')

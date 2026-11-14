@@ -158,6 +158,11 @@ const lisCap=(lv,d)=>lv==='zero'?0:LIS[lv][d[4]?0:1];
 function phStatus(plan,ph){ if(ph==null)return 'none'; const n=nets[plan.net]; return bit(n[1],ph)?'pref':bit(n[0],ph)?'std':'out'; }
 function share(plan,tier,st){ const cs=plan.cost[tier]; if(!cs)return null; const p=st==='pref'&&cs[0]!==0; return {type:p?cs[0]:cs[2],amt:p?cs[1]:cs[3],ded:!!cs[4]&&plan.ded>0,pref:p}; }
 /* 90-day cost sharing for a tier: retail at the chosen pharmacy, or the plan's mail-order pharmacy. null = not offered. */
+/* Quantity limits: the plan's limit as written, and the same limit as a 30-day amount to compare with what was entered. */
+const qNum=n=>String(Math.round(n*100)/100);
+const qlText=x=>x.ql?'Quantity limit '+qNum(x.ql[0])+' per '+x.ql[1]+' days':'Quantity limit';
+const qlPer30=x=>x.ql[0]*30/x.ql[1];
+const flagTexts=x=>[qlText(x),'Prior authorization','Step therapy'].filter((_,b)=>x.flags>>b&1);
 function share90(plan,tier,st,mode){ const c=plan.c90&&plan.c90[tier]; if(!c)return null;
   const k=mode==='m90'?(c[4]!==0?4:c[6]!==0?6:-1):((st==='pref'&&c[0]!==0)?0:c[2]!==0?2:-1);
   return k<0?null:{type:c[k],amt:c[k+1],ded:!!c[8]&&plan.ded>0,pref:k===0||k===4,mail:mode==='m90',days:90}; }
@@ -169,11 +174,11 @@ const FILL={r30:'One-month fills at your pharmacy',r90:'Three-month fills at you
 function estimate(plan,rx,ph,mode='r30'){
   const st=phStatus(plan,ph), form=D.forms[plan.f], lv=lisLevel();
   let dedLeft=plan.ded, oop=0; const months=Array(12).fill(0);
-  const per=rx.map(r=>{const d=D.drugs[r.i],code=form[d[0]],tier=code==null?null:code>>3;
+  const per=rx.map(r=>{const d=D.drugs[r.i],raw=form[d[0]],code=Array.isArray(raw)?raw[0]:raw,ql=Array.isArray(raw)?[raw[1],raw[2]]:null,tier=code==null?null:code>>3;
     let use='r30',sh=null;
     if(tier!=null){ if(mode==='m90'||(mode==='r90'&&st!=='out')){sh=share90(plan,tier,st,mode);if(sh)use=mode} if(!sh)sh=share(plan,tier,st); }
     const k=use==='r30'?1:3;
-    return{d,q:r.q,k,use,oon:use!=='m90'&&st==='out',full:(k===3&&d[5]!=null?d[5]:d[2])!=null?(k===3&&d[5]!=null?d[5]:d[2])*r.q*k:null,tier,flags:code==null?0:code&7,total:0,unk:false,first:null,sh}});
+    return{d,q:r.q,k,use,oon:use!=='m90'&&st==='out',full:(k===3&&d[5]!=null?d[5]:d[2])!=null?(k===3&&d[5]!=null?d[5]:d[2])*r.q*k:null,tier,ql,over:!!ql&&r.q>ql[0]*30/ql[1]+1e-6,flags:code==null?0:code&7,total:0,unk:false,first:null,sh}});
   for(let m=0;m<12;m++) for(const x of per){
     if(x.k===3&&m%3)continue;
     let pay=0; const full=x.full, sh=x.sh;
@@ -198,7 +203,7 @@ function estimate(plan,rx,ph,mode='r30'){
   }
   const drug=months.reduce((a,b)=>a+b,0);
   const premMo=lv&&plan.premLis!=null?plan.premLis:plan.prem;
-  return {plan,st,per,months,drug,lv,premMo,mode,n90:per.filter(x=>x.k===3).length,prem:premMo*12,total:drug+premMo*12,unk:per.some(x=>x.unk),covered:per.filter(x=>x.tier!=null).length,capMonth:oop>=CAP};
+  return {plan,st,per,months,drug,lv,premMo,mode,overQL:per.filter(x=>x.over).length,n90:per.filter(x=>x.k===3).length,prem:premMo*12,total:drug+premMo*12,unk:per.some(x=>x.unk),covered:per.filter(x=>x.tier!=null).length,capMonth:oop>=CAP};
 }
 /* All three ways to fill for one plan, and the one the results use. */
 function estimateAll(plan){
@@ -341,17 +346,18 @@ function cmpCol(e){ if(!e)return '<div><p class="muted">Tick “Compare” on a 
   <div class="ways"><p class="small muted">Ways to fill your prescriptions, estimated total for the year</p><dl class="kv">${waysRows(e,(l,v,n,on)=>`<dt${on?' class="on"':''}>${l}${on?' <span class="chip plain">shown here</span>':''}</dt><dd${on?' class="on"':''}>${v}${n?` <span class="small ${/^saves/.test(n)?'save':'muted'}">${n}</span>`:''}</dd>`).join('')}</dl></div>
   <div><p class="small muted">Your drug costs month by month</p><div class="bars" role="img" aria-label="Monthly drug costs, January to December: ${e.months.map(m=>usd(m,0)).join(', ')}">${e.months.map(m=>`<span style="height:${Math.round(m/mx*100)}%" title="${usd(m,2)}"></span>`).join('')}</div><div class="barlab">${'JFMAMJJASOND'.split('').map(c=>`<span>${c}</span>`).join('')}</div>
   <p class="small muted">January ${usd(e.months[0],2)} · December ${usd(e.months[11],2)}${e.capMonth?' · reaches the '+usd(CAP,0)+' yearly cap':''}${e.n90?' · three-month fills are paid in January, April, July and October':''}</p></div>
-  <div class="drugs">${e.per.map(x=>{const fl=['Quantity limit','Prior authorization','Step therapy'].filter((_,b)=>x.flags>>b&1);
+  <div class="drugs">${e.per.map(x=>{const fl=flagTexts(x);
     return `<div><div class="ln"><b>${esc(drugLabel(x.d))}<span class="small muted" style="font-weight:400">${mcgNote(x.d)}</span></b><b class="num">${x.unk?'n/a':usd(x.total,2)}</b></div>
     <div class="small muted">${x.tier==null?'<span class="chip bad">Not on the plan’s drug list</span> You pay full price.':`Tier ${x.tier}${x.sh&&!x.oon?' · '+(e.lv?'Extra Help copay, '+(e.lv==='zero'?'$0':'up to '+usd(lisCap(e.lv,x.d),2)+(x.d[4]?' (generic)':' (brand)'))+perFill(x.sh):shareText(x.sh)+(x.sh.ded?' after the deductible':'')):''}${x.d[3]?' · insulin, capped at $35 a month':''}${e.mode!=='r30'&&x.k===1&&x.tier!=null?' · monthly fills only':''}`}${x.full==null?' · no price on file':''}</div>
-    ${fl.length?`<div class="small">${fl.map(f=>`<span class="chip warn">${f}</span>`).join(' ')}</div>`:''}</div>`}).join('')}</div></div>`; }
+    ${fl.length?`<div class="small">${fl.map((f,i)=>`<span class="chip ${x.over&&i===0&&x.flags&1?'bad':'warn'}">${f}</span>`).join(' ')}</div>`:''}
+    ${x.over?`<div class="small"><b>Over this plan’s quantity limit.</b> You entered ${qNum(x.q)} per 30 days and the plan covers up to ${qNum(x.ql[0])} per ${x.ql[1]} days${x.ql[1]!==30?' (about '+qNum(qlPer30(x))+' per 30 days)':''}. Getting more needs an exception from the plan. This estimate assumes the full quantity is covered.</div>`:''}</div>`}).join('')}</div></div>`; }
 function printDoc(es){
   const yr=D.meta.year, lv=lisLevel(), ph=S.ph!=null?D.pharm[S.ph]:null;
   const lisTxt=l=>l==='zero'?'$0 copays':'copays up to '+usd(LIS[l][0],2)+' generic and '+usd(LIS[l][1],2)+' brand';
   const help=lv?'Extra Help, '+lisTxt(lv):S.help==='unsure'?'Not sure. Estimates assume no help with costs.':'None';
   const when=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
   const row=(label,f,cls)=>`<tr${cls?` class="${cls}"`:''}><th scope="row">${label}</th>${es.map(e=>`<td>${f(e)}</td>`).join('')}</tr>`;
-  const flags=x=>['Quantity limit','Prior authorization','Step therapy'].filter((_,b)=>x.flags>>b&1);
+  const flags=x=>flagTexts(x).map((f,i)=>x.over&&i===0&&x.flags&1?'<b>'+f+' (you entered '+qNum(x.q)+' per 30 days, which is over the limit)</b>':f);
   const drugCell=(e,j)=>{const x=e.per[j];
     if(x.tier==null)return `<b>${x.unk?'No price on file':usd(x.total,2)+' for the year'}</b><br><small>Not on the plan’s drug list. Full price.</small>`;
     const how=x.oon?'Pharmacy not in network. Full price.':!x.sh?'':e.lv?'Extra Help copay, '+(e.lv==='zero'?'$0':'up to '+usd(lisCap(e.lv,x.d),2))+perFill(x.sh):shareText(x.sh)+(x.sh.ded?' after the deductible':'');
@@ -432,13 +438,14 @@ function vRes(){
     ${nSnp?`<label><input type="checkbox" id="snp" ${S.snp?'checked':''}> Include ${nSnp} ${nD?'other ':''}Special Needs Plan${nSnp===1?'':'s'}</label>`:''}</div>
     <ul class="plans">${list.map(e=>{const p=e.plan,ch=stChip[e.st],on=S.cmp.includes(p.id);
       return `<li class="${on?'on':''}"><div style="min-width:0;display:grid;gap:4px"><h3>${esc(p.name)}</h3>
-      <div class="meta"><span>${esc(p.org)}</span>${stars(p)}<span class="chip ${ch[0]}">${ch[1]}</span>${e.covered<e.per.length?`<span class="chip bad">${e.per.length-e.covered} drug${e.per.length-e.covered===1?'':'s'} not covered</span>`:''}${p.snp?`<span class="chip warn">${['','Chronic condition SNP','Dual-eligible SNP','Institutional SNP'][p.snp]}</span>`:''}</div>
+      <div class="meta"><span>${esc(p.org)}</span>${stars(p)}<span class="chip ${ch[0]}">${ch[1]}</span>${e.covered<e.per.length?`<span class="chip bad">${e.per.length-e.covered} drug${e.per.length-e.covered===1?'':'s'} not covered</span>`:''}${e.overQL?`<span class="chip bad">${e.overQL} drug${e.overQL===1?'':'s'} over the quantity limit</span>`:''}${p.snp?`<span class="chip warn">${['','Chronic condition SNP','Dual-eligible SNP','Institutional SNP'][p.snp]}</span>`:''}</div>
       <div class="meta num"><span>Premium ${usd(e.premMo,2)}/month</span><span>Deductible ${usd(e.lv?0:p.ded,0)}</span><span>Drug costs ${usd(e.drug,0)}/year</span></div>${e.st==='out'&&isKaiser(p)?`<div class="small">${oonNote(e,true)}${oonLink(e)}</div>`:''}${e.best!==e.pick&&e.total-e.alt[e.best].total>=10?`<div class="small save">${FILL[e.best]} would save about ${usd(e.total-e.alt[e.best].total,0)} a year on this plan.</div>`:e.pick!=='r30'?`<div class="small muted">${FILL[e.pick]}${e.n90<e.per.length?' ('+e.n90+' of '+e.per.length+' drugs)':''}</div>`:''}</div>
       <div class="tot"><b class="num">${usd(e.total,0)}${e.unk?'+':''}</b><span class="small muted">estimated for {{YEAR}}</span><label style="justify-content:flex-end;margin-top:6px"><input type="checkbox" data-c="${esc(p.id)}" ${on?'checked':''}> Compare</label></div></li>`}).join('')||'<li>No plans match. Try a different coverage type.</li>'}</ul></section>
   <details class="card"><summary><b>How these estimates are worked out, and what they leave out</b></summary>
     <p>Plans, deductibles, drug lists, tiers, copays and pharmacy networks come from the CMS {{YEAR}} Prescription Drug Plan Formulary and Pharmacy Network file (${esc(D.meta.planFile)}). Premiums come from the CMS {{YEAR}} landscape file (${esc(D.meta.landscapeFile)}). Star ratings are the CMS {{YEAR}} Star Ratings: the Part D rating for drug plans and the overall rating for Medicare Advantage plans.</p>
     <p><b>Drug prices are estimates.</b> ${esc(D.meta.priceNote)} Real prices differ by plan and pharmacy, which matters most for drugs with a percentage cost share and before the deductible is met.</p>
-    <p><b>Ways to fill.</b> Each plan is estimated three ways: a 30-day fill every month at your pharmacy, a 90-day fill every three months at your pharmacy, and a 90-day fill every three months from the plan’s mail-order pharmacy (its preferred mail pharmacy where it has one). A drug the plan does not offer as a 90-day fill stays on monthly fills. A 90-day fill uses the 90-day price CMS publishes for the drug (the median across California plans), or three times the 30-day price where there is none, the insulin cap is $35 for each month supplied, and with Extra Help a 90-day fill costs one copay. Your doctor has to write the prescription for 90 days, and plan quantity limits can prevent it.</p>
+    <p><b>Ways to fill.</b> Each plan is estimated three ways: a 30-day fill every month at your pharmacy, a 90-day fill every three months at your pharmacy, and a 90-day fill every three months from the plan’s mail-order pharmacy (its preferred mail pharmacy where it has one). A drug the plan does not offer as a 90-day fill stays on monthly fills. A 90-day fill uses the 90-day price CMS publishes for the drug (the median across California plans), or three times the 30-day price where there is none, the insulin cap is $35 for each month supplied, and with Extra Help a 90-day fill costs one copay. Your doctor has to write the prescription for 90 days.</p>
+    <p><b>Quantity limits.</b> Where a plan limits how much of a drug it covers, the limit is shown as CMS publishes it, for example 30 per 30 days. The quantity you entered is compared with that limit at the same daily rate, and a drug is flagged when you entered more. The cost estimate still assumes the full quantity is covered, which would need an exception from the plan.</p>
     <p>Each estimate assumes every drug is filled all year by the method chosen, in {{YEAR}}, the plan deductible where it applies to the drug’s tier, the ${usd(CAP,0)} yearly cap on what you pay for covered drugs, and the $35 monthly cap on covered insulin. A pharmacy outside the plan’s network, or a drug not on the plan’s list, is charged at full price.</p>
     <p><b>Extra Help.</b> When you choose a program in step 3, each plan uses its premium for people with the full subsidy from the CMS landscape file, the drug deductible is removed, and each covered fill costs the lower of the plan’s price and the {{YEAR}} Extra Help copay for your level. The yearly cap is reached at the same point it would be without Extra Help, after which covered drugs cost $0. Generic and brand copays follow whether RxNorm lists the drug as generic or brand, which can differ from how a plan classifies it.</p>
     <p>Special Needs Plans are hidden unless you tick the box, except that plans for people with both Medicare and Medi-Cal (D-SNPs) are shown when you choose Medi-Cal or SSI in step 3. Left out: the Medicare Part B premium, 60-day fills, late-enrollment penalties, income-related premium surcharges, state help beyond Extra Help, and medical costs. For Medicare Advantage plans the premium is the plan’s combined medical and drug premium from the CMS landscape file. ZIP codes are matched to counties with the Census ZIP Code Tabulation Area table, which can differ from postal ZIP codes at the edges. Pharmacy names come from the CMS provider registry. Pharmacy distances are straight-line miles between the centre of your ZIP code and the centre of the pharmacy’s ZIP code, so they are approximate.</p>
