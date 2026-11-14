@@ -181,11 +181,13 @@ function estimate(plan,rx,ph){
   const premMo=lv&&plan.premLis!=null?plan.premLis:plan.prem;
   return {plan,st,per,months,drug,lv,premMo,prem:premMo*12,total:drug+premMo*12,unk:per.some(x=>x.unk),covered:per.filter(x=>x.tier!=null).length,capMonth:oop>=CAP};
 }
+const mediCal=()=>S.help==='medicaid';
+function snpShown(p){return p.snp===2&&mediCal()?S.dsnp!==false:!!S.snp}
 function plansFor(){
   const codes=D.counties[S.county]||[];
   return D.plans.filter(p=>{
     if(p.type==='PDP'){ if(S.type==='ma')return false } else { if(S.type==='pdp')return false; if(!p.cty.some(c=>codes.includes(c)))return false }
-    if(p.snp&&!S.snp)return false; return true; });
+    if(p.snp&&!snpShown(p))return false; return true; });
 }
 
 /* ---------- rendering ---------- */
@@ -196,7 +198,7 @@ function go(n){S.step=n;save();render();window.scrollTo(0,0)}
 function nav(back,nextLabel,ok=true){return `<div class="row end"><button class="btn ghost" id="back" ${back?'':'hidden'}>Back</button><button class="btn" id="next" ${ok?'':'disabled'}>${nextLabel||'Continue'}</button></div>`}
 function bindNav(){const b=$('#back'),n=$('#next');if(b)b.onclick=()=>go(S.step-1);if(n)n.onclick=()=>go(S.step+1)}
 function exBanner(){return S.example?`<div class="banner ex">These answers are an <b>example</b> so you can see how the tool works. <button class="btn link" id="clear">Clear and start with my own answers</button></div>`:''}
-function resetAll(){S=Object.assign(S,{step:0,zip:'',county:null,type:'pdp',help:'none',lvl:null,rx:[],ph:null,example:false,snp:false,sort:'total',cmp:[]});save();render();window.scrollTo(0,0);const z=$('#zip');if(z)z.focus()}
+function resetAll(){S=Object.assign(S,{step:0,zip:'',county:null,type:'pdp',help:'none',lvl:null,dsnp:null,rx:[],ph:null,example:false,snp:false,sort:'total',cmp:[]});save();render();window.scrollTo(0,0);const z=$('#zip');if(z)z.focus()}
 function bindEx(){const c=$('#clear');if(c)c.onclick=resetAll}
 const newBtn=()=>`<span class="newc"><button class="btn" data-new>Start a new client</button></span>`;
 function bindNew(){document.querySelectorAll('.newc').forEach(w=>{const ask=()=>{w.innerHTML=`<span class="small"><b>Clear every answer and start again?</b></span> <button class="btn" data-yes>Yes, clear</button> <button class="btn ghost" data-no>Cancel</button>`;
@@ -242,7 +244,7 @@ function vHelp(){
       ['low','Lower copays','Up to '+usd(LIS.low[0],2)+' for generics and '+usd(LIS.low[1],2)+' for brand-name drugs. For people with full Medi-Cal and income at or below the federal poverty level.'],
       ['zero','$0 copays','For people with full Medi-Cal who live in a nursing home or get home and community-based services.']],lisLevel()):'';
     document.querySelectorAll('[name=lvl]').forEach(i=>i.onchange=()=>{S.lvl=i.value;touched();save()})};
-  document.querySelectorAll('[name=help]').forEach(i=>i.onchange=()=>{S.help=i.value;S.lvl=null;touched();save();lvl()}); lvl(); bindNav();
+  document.querySelectorAll('[name=help]').forEach(i=>i.onchange=()=>{S.help=i.value;S.lvl=null;S.dsnp=null;S.cmp=[];touched();save();lvl()}); lvl(); bindNav();
 }
 /* Drug search. The drug list writes microgram strengths as fractions of a milligram (50 mcg is "0.05 MG"),
    so each name also carries its mcg equivalents, and numbers in a search must match a whole number in the name. */
@@ -359,7 +361,10 @@ function vRes(){
   const ids=new Set(list.map(e=>e.plan.id)); S.cmp=S.cmp.filter(i=>ids.has(i));
   if(!S.cmp.length){S.cmp=[...list].sort(sorts.total).slice(0,2).map(e=>e.plan.id)}
   const by=Object.fromEntries(list.map(e=>[e.plan.id,e]));
-  const nSnp=D.plans.filter(p=>p.snp&&(p.type==='PDP'?S.type!=='ma':S.type!=='pdp'&&p.cty.some(c=>(D.counties[S.county]||[]).includes(c)))).length;
+  const here=p=>p.type==='PDP'||p.cty.some(c=>(D.counties[S.county]||[]).includes(c));
+  const snps=D.plans.filter(p=>p.snp&&here(p)&&(p.type==='PDP'?S.type!=='ma':S.type!=='pdp'));
+  const nD=mediCal()?snps.filter(p=>p.snp===2).length:0, nSnp=snps.length-nD;
+  const nDhidden=mediCal()&&S.type==='pdp'?D.plans.filter(p=>p.snp===2&&p.type!=='PDP'&&here(p)).length:0;
   const canPrint=(()=>{try{return window.self===window.top}catch(e){return false}})();
   $('#view').innerHTML=`<div class="results" style="display:flex;flex-direction:column;gap:20px">
   ${S.example?`<div class="banner ex">Example results for a made-up person in ${esc(S.zip)}. <button class="btn link" id="clear">Clear and start with my own answers</button></div>`:''}
@@ -368,12 +373,14 @@ function vRes(){
     <button class="pill" data-go="1">${{pdp:'Part D drug plans',ma:'Medicare Advantage',both:'All plan types'}[S.type]}</button>
     <button class="pill" data-go="3">${S.rx.length} prescription${S.rx.length===1?'':'s'}</button>
     <button class="pill" data-go="4">${S.ph!=null?esc(D.pharm[S.ph][0]):'No pharmacy chosen'}</button>${newBtn()}</div>
+  ${nDhidden?`<div class="banner ex"><b>${nDhidden} plan${nDhidden===1?'':'s'} in your county ${nDhidden===1?'is':'are'} built for people with Medicare and Medi-Cal.</b> These dual-eligible plans (D-SNPs) are Medicare Advantage plans, so they are not in a list of Part D drug plans. <button class="btn link" id="showma">Show Medicare Advantage plans too</button></div>`:''}
   ${lisLevel()?`<div class="banner ex"><b>These estimates include Extra Help.</b> ${{zero:'$0 copays',low:'Copays of up to '+usd(LIS.low[0],2)+' for generics and '+usd(LIS.low[1],2)+' for brand-name drugs',std:'Copays of up to '+usd(LIS.std[0],2)+' for generics and '+usd(LIS.std[1],2)+' for brand-name drugs'}[lisLevel()]}, no drug deductible, and each plan’s reduced premium. <button class="btn link" data-go="2">Change</button></div>`:S.help==='unsure'?`<div class="banner warn"><b>These estimates do not include help with costs.</b> If you get Medi-Cal, SSI, a Medicare Savings Program or Extra Help, your premiums and drug costs will be lower than shown. <button class="btn link" data-go="2">Choose a program</button> to see estimates with that help.</div>`:''}
   <section style="display:flex;flex-direction:column;gap:12px"><div class="sidehead"><h2>Side by side</h2>${canPrint?'<button class="btn ghost" id="print">Print this comparison</button>':''}</div><p class="muted small">Starts with the two lowest-cost plans. Tick “Compare” on any two plans in the list to change it.</p>
     <div class="cmp">${cmpCol(by[S.cmp[0]])}${cmpCol(by[S.cmp[1]])}</div></section>
   <section style="display:flex;flex-direction:column;gap:12px"><h2>${list.length} plan${list.length===1?'':'s'} available</h2>
     <div class="tools"><label>Sort by <select id="sort"><option value="total">Lowest estimated yearly cost</option><option value="prem">Lowest premium</option><option value="star">Highest star rating</option></select></label>
-    ${nSnp?`<label><input type="checkbox" id="snp" ${S.snp?'checked':''}> Include ${nSnp} Special Needs Plan${nSnp===1?'':'s'}</label>`:''}</div>
+    ${nD?`<label><input type="checkbox" id="dsnp" ${S.dsnp!==false?'checked':''}> Include ${nD} plan${nD===1?'':'s'} for people with Medicare and Medi-Cal (D-SNP)</label>`:''}
+    ${nSnp?`<label><input type="checkbox" id="snp" ${S.snp?'checked':''}> Include ${nSnp} ${nD?'other ':''}Special Needs Plan${nSnp===1?'':'s'}</label>`:''}</div>
     <ul class="plans">${list.map(e=>{const p=e.plan,ch=stChip[e.st],on=S.cmp.includes(p.id);
       return `<li class="${on?'on':''}"><div style="min-width:0;display:grid;gap:4px"><h3>${esc(p.name)}</h3>
       <div class="meta"><span>${esc(p.org)}</span>${stars(p)}<span class="chip ${ch[0]}">${ch[1]}</span>${e.covered<e.per.length?`<span class="chip bad">${e.per.length-e.covered} drug${e.per.length-e.covered===1?'':'s'} not covered</span>`:''}${p.snp?`<span class="chip warn">${['','Chronic condition SNP','Dual-eligible SNP','Institutional SNP'][p.snp]}</span>`:''}</div>
@@ -384,7 +391,7 @@ function vRes(){
     <p><b>Drug prices are estimates.</b> ${esc(D.meta.priceNote)} Real prices differ by plan and pharmacy, which matters most for drugs with a percentage cost share and before the deductible is met.</p>
     <p>Each estimate assumes one 30-day retail fill of every drug in each month of {{YEAR}}, the plan deductible where it applies to the drug’s tier, the ${usd(CAP,0)} yearly cap on what you pay for covered drugs, and the $35 monthly cap on covered insulin. A pharmacy outside the plan’s network, or a drug not on the plan’s list, is charged at full price.</p>
     <p><b>Extra Help.</b> When you choose a program in step 3, each plan uses its premium for people with the full subsidy from the CMS landscape file, the drug deductible is removed, and each covered fill costs the lower of the plan’s price and the {{YEAR}} Extra Help copay for your level. The yearly cap is reached at the same point it would be without Extra Help, after which covered drugs cost $0. Generic and brand copays follow whether RxNorm lists the drug as generic or brand, which can differ from how a plan classifies it.</p>
-    <p>Left out: the Medicare Part B premium, mail order and 90-day fills, late-enrollment penalties, income-related premium surcharges, state help beyond Extra Help, and medical costs. For Medicare Advantage plans the premium is the plan’s combined medical and drug premium from the CMS landscape file. ZIP codes are matched to counties with the Census ZIP Code Tabulation Area table, which can differ from postal ZIP codes at the edges. Pharmacy names come from the CMS provider registry.</p>
+    <p>Special Needs Plans are hidden unless you tick the box, except that plans for people with both Medicare and Medi-Cal (D-SNPs) are shown when you choose Medi-Cal in step 3. Left out: the Medicare Part B premium, mail order and 90-day fills, late-enrollment penalties, income-related premium surcharges, state help beyond Extra Help, and medical costs. For Medicare Advantage plans the premium is the plan’s combined medical and drug premium from the CMS landscape file. ZIP codes are matched to counties with the Census ZIP Code Tabulation Area table, which can differ from postal ZIP codes at the edges. Pharmacy names come from the CMS provider registry.</p>
     <p>Confirm costs with the plan or at Medicare.gov before enrolling.</p></details>
   <div class="row end"><button class="btn ghost" id="back">Back</button>${newBtn()}</div>
   ${printDoc(S.cmp.map(i=>by[i]).filter(Boolean))}</div>`;
@@ -392,6 +399,8 @@ function vRes(){
   fitPrint(); if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fitPrint);
   $('#sort').value=S.sort; $('#sort').onchange=e=>{S.sort=e.target.value;save();vRes()};
   const sn=$('#snp'); if(sn)sn.onchange=()=>{S.snp=sn.checked;save();vRes()};
+  const dn=$('#dsnp'); if(dn)dn.onchange=()=>{S.dsnp=dn.checked;save();vRes()};
+  const sm=$('#showma'); if(sm)sm.onclick=()=>{S.type='both';S.cmp=[];save();vRes()};
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(+b.dataset.go));
   document.querySelectorAll('[data-c]').forEach(c=>c.onchange=()=>{const id=c.dataset.c;if(c.checked){S.cmp.push(id);if(S.cmp.length>2)S.cmp.shift()}else S.cmp=S.cmp.filter(i=>i!==id);save();vRes()});
   bindNav(); bindEx(); bindNew();
