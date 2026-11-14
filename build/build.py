@@ -75,6 +75,64 @@ def zip_centres(year, refresh):
     return out
 
 
+def star_detail(zip_path, contracts):
+    """Everything CMS publishes behind a contract's star rating: summary, domain and measure stars, measure results."""
+    z = zipfile.ZipFile(zip_path)
+
+    def rows(key):
+        name = [n for n in z.namelist() if key in n and n.lower().endswith('.csv')]
+        if not name:
+            raise SystemExit(f'No "{key}" table in the star ratings zip.')
+        rr = list(csv.reader(io.TextIOWrapper(z.open(name[0]), encoding='cp1252')))
+        hi = next(i for i, r in enumerate(rr) if r and r[0].strip().upper().replace('_', ' ') in ('CONTRACT NUMBER', 'CONTRACT ID'))
+        return rr, hi
+
+    def val(s):
+        s = s.strip()
+        try:
+            f = float(s)
+            return int(f) if f == int(f) else f
+        except ValueError:
+            return s
+
+    clean = lambda s: re.sub(r'\s+', ' ', s.replace('\x96', '-').replace('–', '-').replace('’', "'")).strip()
+    sr, shi = rows('Summary Ratings'); sh = [c.strip() for c in sr[shi]]
+    s_cols = [next(i for i, c in enumerate(sh) if c.endswith(k)) for k in ('Part C Summary', 'Part D Summary', 'Overall')]
+    dr, dhi = rows('Domain Stars'); dh = [c.strip() for c in dr[dhi]]
+    d_cols = [i for i, c in enumerate(dh) if re.match(r'[HD]D\d+:', c)]
+    domains = [[dh[i].split(':')[0], clean(dh[i].split(':', 1)[1])] for i in d_cols]
+    mr, mhi = rows('Measure Stars')
+    groups, names, dates = mr[mhi], mr[mhi + 1], mr[mhi + 2]
+    m_cols = [i for i, c in enumerate(names) if re.match(r'[CD]\d+:', c.strip())]
+    dom_at = {}
+    cur = None
+    for i, c in enumerate(groups):
+        if re.match(r'[HD]D\d+:', c.strip()):
+            cur = [d[0] for d in domains].index(c.strip().split(':')[0])
+        dom_at[i] = cur
+    measures = [[names[i].strip().split(':')[0], clean(names[i].split(':', 1)[1]), dom_at.get(i), clean(dates[i])] for i in m_cols]
+    vr, vhi = rows('Measure Data')
+    if any(i >= len(vr[vhi + 1]) or vr[vhi + 1][i].strip() != names[i].strip() for i in m_cols):
+        raise SystemExit('Star measure tables do not line up.')
+    by = lambda rr, hi, skip: {r[0].strip(): r for r in rr[hi + skip:] if r and r[0].strip()}
+    S, Dm, Ms, Mv = by(sr, shi, 1), by(dr, dhi, 1), by(mr, mhi, 3), by(vr, vhi, 3)
+    hp, lp = {}, {}
+    hr, hhi = rows('High Performing'); hh = [c.strip() for c in hr[hhi]]
+    for c, r in by(hr, hhi, 1).items():
+        hp[c] = clean(r[hh.index('Highest Rating')]) if 'Highest Rating' in hh else 'Yes'
+    lr, lhi = rows('Low Performing'); lh = [c.strip() for c in lr[lhi]]
+    for c, r in by(lr, lhi, 1).items():
+        lp[c] = clean(r[lh.index('Reason for LPI')]) if 'Reason for LPI' in lh else 'Yes'
+    out = {}
+    for c in contracts:
+        if c not in S:
+            continue
+        out[c] = dict(s=[val(S[c][i]) for i in s_cols], d=[val(Dm[c][i]) for i in d_cols] if c in Dm else None,
+                      m=[val(Ms[c][i]) for i in m_cols] if c in Ms else None, v=[val(Mv[c][i]) for i in m_cols] if c in Mv else None,
+                      hp=hp.get(c), lp=lp.get(c))
+    return dict(domains=domains, measures=measures, c=out)
+
+
 def inner(outer_path, key, tag):
     """Open the text file inside the nested zip whose name contains key."""
     z = zipfile.ZipFile(outer_path)
@@ -394,6 +452,9 @@ def main():
     c_d = next(i for i, c in enumerate(hdr) if c.endswith('Part D Summary'))
     c_o = next(i for i, c in enumerate(hdr) if c.endswith('Overall'))
     stars = {r[0].strip(): [x.strip() for x in r] for r in srows[hi + 1:] if r and r[0].strip()}
+    star_more = star_detail(stars_zip, sorted({k[0] for k in groups}))
+    log(f'   star detail for {len(star_more["c"])} contracts: {len(star_more["domains"])} domains, {len(star_more["measures"])} measures, '
+        f'{sum(1 for v in star_more["c"].values() if v["lp"])} low-performing, {sum(1 for v in star_more["c"].values() if v["hp"])} high-performing')
     zc = collections.defaultdict(list)
     for r in csv.DictReader(open(fetch(ZCTA, 'zcta_county.txt', args.refresh), encoding='utf-8-sig'), delimiter='|'):
         if r['GEOID_COUNTY_20'].startswith(CA_FIPS) and r['GEOID_ZCTA5_20']:
@@ -468,7 +529,7 @@ def main():
                           planFile=(f'release of {m_date}, ' if m_date else '') + os.path.basename(monthly), priceNote=price_note,
                           example=dict(zip=ex['zip'], county=ex['county'], ph=ex_ph,
                                        rx=[dict(i=di[x['rxcui']], q=x['quantity']) for x in ex['prescriptions'] if x['rxcui'] in di])),
-                zips=zips, zll=zll, counties=dict(geo), plans=plans, forms=[forms[f] for f in fids], drugs=drugs, pharm=[v for _, v in ph], nets=nets)
+                zips=zips, zll=zll, stars=star_more, counties=dict(geo), plans=plans, forms=[forms[f] for f in fids], drugs=drugs, pharm=[v for _, v in ph], nets=nets)
     page = open(os.path.join(ROOT, 'build', 'app.html'), encoding='utf-8').read().replace('{{YEAR}}', str(year))
     page = page.replace('/*DATA*/null', json.dumps(data, separators=(',', ':')).replace('</', '<\\/'))
     doc = ('<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>\n'

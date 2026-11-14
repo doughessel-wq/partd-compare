@@ -91,6 +91,15 @@ dl.kv dt{color:var(--muted)} dl.kv dd{margin:0;text-align:right;font-variant-num
 .plans label{display:flex;gap:8px;align-items:center;font-size:.9rem;cursor:pointer}
 .plans input{width:18px;height:18px;accent-color:var(--accent)}
 details{font-size:.92rem} details p{margin-top:8px;max-width:75ch}
+.sb .tw{overflow-x:auto}
+.sb table{border-collapse:collapse;width:100%;min-width:560px;font-size:.93rem}
+.sb th,.sb td{border-top:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+.sb thead th{border-top:0;font-family:var(--display)}
+.sb tbody th{font-weight:400;width:44%}
+.sb tr.grp th{font-family:var(--display);font-weight:700;background:var(--soft)}
+.sb tr.sub th{padding-left:26px}
+.sb details{font-size:1rem} .sb summary{cursor:pointer;font-weight:700}
+.sb .stars{font-size:.95rem}
 .why .tw{overflow-x:auto}
 .why table{border-collapse:collapse;width:100%;min-width:600px;font-size:.93rem}
 .why th,.why td{border-top:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
@@ -370,6 +379,39 @@ const tierDiffers=(x,y)=>x.tier!==y.tier;
 function tierSpread(list,j){ const c={}; for(const e of list){const t=e.per[j].tier; c[t==null?'x':t]=(c[t==null?'x':t]||0)+1}
   const parts=Object.keys(c).filter(k=>k!=='x').sort((a,b)=>a-b).map(k=>'Tier '+k+' on '+c[k]); if(c.x)parts.push('not covered on '+c.x);
   return {text:parts.join(', '),varies:Object.keys(c).length>1}; }
+/* ---------- star rating breakdown: the CMS summary, domain and measure ratings behind each plan's stars ---------- */
+const STAR=D.stars, starOf=p=>STAR.c[p.id.split('-')[0]];
+function starCell(v,res){
+  if(typeof v==='number')return `<span title="${v} out of 5 stars"><span class="stars" aria-hidden="true">★★★★★<i style="width:${v*20}%">★★★★★</i></span> <span class="small num">${v} of 5</span></span>${res!=null&&typeof res!=='undefined'&&!/Medicare shows only/.test(String(res))&&res!==''?`<br><span class="small muted">Result: ${esc(res)}</span>`:''}`;
+  return `<span class="small muted">${esc(v==null||v===''?'Not available':v)}</span>`;
+}
+function perfChip(p){const r=starOf(p); if(!r)return '';
+  return r.lp?'<span class="chip bad">CMS low-performing plan</span>':r.hp?'<span class="chip good">CMS high-performing plan</span>':''}
+function starCard(es){
+  es=es.filter(Boolean); if(!es.length)return '';
+  const rs=es.map(e=>starOf(e.plan)), col=f=>rs.map(r=>`<td>${r?f(r):'<span class="small muted">No rating data</span>'}</td>`).join('');
+  const head=`<thead><tr><th></th>${es.map(e=>`<th>${esc(e.plan.name)}<br><span class="small muted" style="font-family:var(--body);font-weight:400">${esc(e.plan.org)} · contract ${esc(e.plan.id.split('-')[0])}</span></th>`).join('')}</tr></thead>`;
+  const row=(label,f,cls)=>`<tr${cls?` class="${cls}"`:''}><th scope="row">${label}</th>${col(f)}</tr>`;
+  const dom=(kind)=>STAR.domains.map((d,i)=>[d,i]).filter(([d])=>d[0].startsWith(kind));
+  const measRows=kind=>dom(kind).map(([d,i])=>`<tr class="grp"><th scope="row" colspan="${es.length+1}">${esc(d[1])}</th></tr>`+
+    STAR.measures.map((m,j)=>[m,j]).filter(([m])=>m[2]===i).map(([m,j])=>row(`${esc(m[1])}<br><span class="small muted">${esc(m[0])}${m[3]&&m[3]!=='Not Applicable'?' · measured '+esc(m[3]):''}</span>`,r=>starCell(r.m?r.m[j]:null,r.v?r.v[j]:null),'sub')).join('')).join('');
+  const hasHealth=rs.some(r=>r&&r.d&&r.d.slice(0,5).some(v=>typeof v==='number'));
+  const flags=es.map((e,k)=>{const r=rs[k]; return r&&r.lp?`<p class="banner warn"><b>${esc(e.plan.name)}:</b> CMS marks this insurer’s contract as low performing because it has been rated under 3 stars for three years in a row (${esc(r.lp)}).</p>`:r&&r.hp?`<p class="banner ex"><b>${esc(e.plan.name)}:</b> CMS marks this insurer’s contract as high performing, with 5 stars (${esc(r.hp)}).</p>`:''}).join('');
+  return `<section class="card sb"><div><h2>Star rating breakdown</h2>
+  <p class="q-help" style="margin-top:8px">Medicare rates plans from 1 to 5 stars each year. These are the CMS {{YEAR}} ratings behind the stars shown above: the summary ratings, the areas they are built from, and every individual measure with the plan’s result.</p></div>
+  ${flags}
+  <div class="tw"><table>${head}<tbody>
+  ${row('Overall rating',r=>starCell(r.s[2]))}
+  ${row('Drug plan rating (Part D)',r=>starCell(r.s[1]))}
+  ${row('Health plan rating (Part C)',r=>starCell(r.s[0]))}
+  <tr class="grp"><th scope="row" colspan="${es.length+1}">Drug plan areas</th></tr>
+  ${dom('DD').map(([d,i])=>row(esc(d[1]),r=>starCell(r.d?r.d[i]:null),'sub')).join('')}
+  ${hasHealth?`<tr class="grp"><th scope="row" colspan="${es.length+1}">Health plan areas</th></tr>${dom('HD').map(([d,i])=>row(esc(d[1]),r=>starCell(r.d?r.d[i]:null),'sub')).join('')}`:''}
+  </tbody></table></div>
+  <details><summary>All ${STAR.measures.filter(m=>m[0][0]==='D').length} drug plan measures</summary><div class="tw" style="margin-top:10px"><table>${head}<tbody>${measRows('DD')}</tbody></table></div></details>
+  ${hasHealth?`<details><summary>All ${STAR.measures.filter(m=>m[0][0]==='C').length} health plan measures</summary><div class="tw" style="margin-top:10px"><table>${head}<tbody>${measRows('HD')}</tbody></table></div></details>`:''}
+  <p class="small muted">Ratings belong to the insurer’s contract with Medicare, which can cover several plans, so plans from the same contract share them. An overall rating is given only to plans with both health and drug coverage. “Result” is the figure CMS publishes for the measure; for some measures CMS publishes only the stars.</p></section>`;
+}
 function tierCard(a,b,list){
   if(!a||!b||!a.per.length)return '';
   const dTot=b.total-a.total, dPrem=b.prem-a.prem, rows=a.per.map((x,j)=>({x,y:b.per[j],j}));
@@ -470,6 +512,7 @@ function vRes(){
   <section style="display:flex;flex-direction:column;gap:12px"><div class="sidehead"><h2>Side by side</h2>${canPrint?'<button class="btn ghost" id="print">Print this comparison</button>':''}</div><p class="muted small">Starts with the two lowest-cost plans. Tick “Compare” on any two plans in the list to change it.</p>
     <div class="cmp">${cmpCol(by[S.cmp[0]])}${cmpCol(by[S.cmp[1]])}</div></section>
   ${tierCard(by[S.cmp[0]],by[S.cmp[1]],list)}
+  ${starCard(S.cmp.map(i=>by[i]))}
   <section style="display:flex;flex-direction:column;gap:12px"><h2>${list.length} plan${list.length===1?'':'s'} available</h2>
     <div class="tools"><label>Estimate with <select id="fill"><option value="r30">One-month fills at my pharmacy</option><option value="r90">Three-month fills at my pharmacy</option><option value="m90">Three-month fills by mail order</option><option value="best">Whichever is cheapest for each plan</option></select></label>
     <label>Sort by <select id="sort"><option value="total">Lowest estimated yearly cost</option><option value="prem">Lowest premium</option><option value="star">Highest star rating</option><option value="pa">Fewest prior authorizations</option></select></label>
@@ -477,13 +520,14 @@ function vRes(){
     ${nSnp?`<label><input type="checkbox" id="snp" ${S.snp?'checked':''}> Include ${nSnp} ${nD?'other ':''}Special Needs Plan${nSnp===1?'':'s'}</label>`:''}</div>
     <ul class="plans">${list.map(e=>{const p=e.plan,ch=stChip[e.st],on=S.cmp.includes(p.id);
       return `<li class="${on?'on':''}"><div style="min-width:0;display:grid;gap:4px"><h3>${esc(p.name)}</h3>
-      <div class="meta"><span>${esc(p.org)}</span>${stars(p)}<span class="chip ${ch[0]}">${ch[1]}</span>${e.covered<e.per.length?`<span class="chip bad">${e.per.length-e.covered} drug${e.per.length-e.covered===1?'':'s'} not covered</span>`:''}${e.pa?`<span class="chip warn">${e.pa} of ${e.per.length} drug${e.per.length===1?'':'s'} need${e.pa===1?'s':''} prior authorization</span>`:''}${e.overQL?`<span class="chip bad">${e.overQL} drug${e.overQL===1?'':'s'} over the quantity limit</span>`:''}${p.snp?`<span class="chip warn">${['','Chronic condition SNP','Dual-eligible SNP','Institutional SNP'][p.snp]}</span>`:''}</div>
+      <div class="meta"><span>${esc(p.org)}</span>${stars(p)}<span class="chip ${ch[0]}">${ch[1]}</span>${e.covered<e.per.length?`<span class="chip bad">${e.per.length-e.covered} drug${e.per.length-e.covered===1?'':'s'} not covered</span>`:''}${e.pa?`<span class="chip warn">${e.pa} of ${e.per.length} drug${e.per.length===1?'':'s'} need${e.pa===1?'s':''} prior authorization</span>`:''}${e.overQL?`<span class="chip bad">${e.overQL} drug${e.overQL===1?'':'s'} over the quantity limit</span>`:''}${perfChip(p)}${p.snp?`<span class="chip warn">${['','Chronic condition SNP','Dual-eligible SNP','Institutional SNP'][p.snp]}</span>`:''}</div>
       <div class="meta num"><span>Premium ${usd(e.premMo,2)}/month</span><span>Deductible ${usd(e.lv?0:p.ded,0)}</span><span>Drug costs ${usd(e.drug,0)}/year</span></div>${e.st==='out'&&isKaiser(p)?`<div class="small">${oonNote(e,true)}${oonLink(e)}</div>`:''}${e.best!==e.pick&&e.total-e.alt[e.best].total>=10?`<div class="small save">${FILL[e.best]} would save about ${usd(e.total-e.alt[e.best].total,0)} a year on this plan.</div>`:e.pick!=='r30'?`<div class="small muted">${FILL[e.pick]}${e.n90<e.per.length?' ('+e.n90+' of '+e.per.length+' drugs)':''}</div>`:''}</div>
       <div class="tot"><b class="num">${usd(e.total,0)}${e.unk?'+':''}</b><span class="small muted">estimated for {{YEAR}}</span><label style="justify-content:flex-end;margin-top:6px"><input type="checkbox" data-c="${esc(p.id)}" ${on?'checked':''}> Compare</label></div></li>`}).join('')||'<li>No plans match. Try a different coverage type.</li>'}</ul></section>
   <details class="card"><summary><b>How these estimates are worked out, and what they leave out</b></summary>
     <p>Plans, deductibles, drug lists, tiers, copays and pharmacy networks come from the CMS {{YEAR}} Prescription Drug Plan Formulary and Pharmacy Network file (${esc(D.meta.planFile)}). Premiums come from the CMS {{YEAR}} landscape file (${esc(D.meta.landscapeFile)}). Star ratings are the CMS {{YEAR}} Star Ratings: the Part D rating for drug plans and the overall rating for Medicare Advantage plans.</p>
     <p><b>Drug prices are estimates.</b> ${esc(D.meta.priceNote)} Real prices differ by plan and pharmacy, which matters most for drugs with a percentage cost share and before the deductible is met.</p>
     <p><b>Ways to fill.</b> Each plan is estimated three ways: a 30-day fill every month at your pharmacy, a 90-day fill every three months at your pharmacy, and a 90-day fill every three months from the plan’s mail-order pharmacy (its preferred mail pharmacy where it has one). A drug the plan does not offer as a 90-day fill stays on monthly fills. A 90-day fill is priced at three times the 30-day price, the insulin cap is $35 for each month supplied, and with Extra Help a 90-day fill costs one copay. Your doctor has to write the prescription for 90 days.</p>
+    <p><b>Star ratings.</b> The breakdown shows CMS’s {{YEAR}} Star Ratings data tables as published: summary ratings, the nine rated areas, and each measure’s stars and result with the period it was measured over. Ratings are given per contract, not per plan. Plans too new or too small to be measured show CMS’s own wording.</p>
     <p><b>Tiers.</b> The tier shown for each drug is the one in the plan’s CMS formulary file. The comparison of two plans lists each drug’s tier, what the plan charges for it and the yearly cost on each plan, and marks drugs that are on different tiers. CMS’s file gives tier numbers but not the plans’ names for them.</p>
     <p><b>Prior authorization.</b> Each plan shows how many of your drugs need the plan’s approval before it will cover them, as listed in the CMS formulary file. Your prescriber asks for the approval. The count does not change the cost estimate, and a plan can turn a request down.</p>
     <p><b>Quantity limits.</b> Where a plan limits how much of a drug it covers, the limit is shown as CMS publishes it, for example 30 per 30 days. The quantity you entered is compared with that limit at the same daily rate, and a drug is flagged when you entered more. The cost estimate still assumes the full quantity is covered, which would need an exception from the plan.</p>
