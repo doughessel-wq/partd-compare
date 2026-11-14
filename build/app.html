@@ -91,6 +91,11 @@ dl.kv dt{color:var(--muted)} dl.kv dd{margin:0;text-align:right;font-variant-num
 .plans label{display:flex;gap:8px;align-items:center;font-size:.9rem;cursor:pointer}
 .plans input{width:18px;height:18px;accent-color:var(--accent)}
 details{font-size:.92rem} details p{margin-top:8px;max-width:75ch}
+.mail .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 16px}
+.mail label{display:grid;gap:4px;font-size:.93rem}
+.mail input{width:100%}
+.mail .acts{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.mail textarea{width:100%;min-height:180px;font:inherit;font-size:.9rem;background:var(--surface);color:var(--ink);border:1.5px solid var(--muted);border-radius:8px;padding:10px}
 .sb .tw{overflow-x:auto}
 .sb table{border-collapse:collapse;width:100%;min-width:560px;font-size:.93rem}
 .sb th,.sb td{border-top:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
@@ -249,7 +254,7 @@ function go(n){if(n!==4)phPlan=null;S.step=n;save();render();window.scrollTo(0,0
 function nav(back,nextLabel,ok=true){return `<div class="row end"><button class="btn ghost" id="back" ${back?'':'hidden'}>Back</button><button class="btn" id="next" ${ok?'':'disabled'}>${nextLabel||'Continue'}</button></div>`}
 function bindNav(){const b=$('#back'),n=$('#next');if(b)b.onclick=()=>go(S.step-1);if(n)n.onclick=()=>go(S.step+1)}
 function exBanner(){return S.example?`<div class="banner ex">These answers are an <b>example</b> so you can see how the tool works. <button class="btn link" id="clear">Clear and start with my own answers</button></div>`:''}
-function resetAll(){S=Object.assign(S,{step:0,zip:'',county:null,type:'pdp',help:'none',lvl:null,dsnp:null,rx:[],ph:null,example:false,snp:false,sort:'total',fill:'r30',cmp:[]});save();render();window.scrollTo(0,0);const z=$('#zip');if(z)z.focus()}
+function resetAll(){CLIENT={name:'',email:''};mailNote='';S=Object.assign(S,{step:0,zip:'',county:null,type:'pdp',help:'none',lvl:null,dsnp:null,rx:[],ph:null,example:false,snp:false,sort:'total',fill:'r30',cmp:[]});save();render();window.scrollTo(0,0);const z=$('#zip');if(z)z.focus()}
 function bindEx(){const c=$('#clear');if(c)c.onclick=resetAll}
 const newBtn=()=>`<span class="newc"><button class="btn" data-new>Start a new client</button></span>`;
 function bindNew(){document.querySelectorAll('.newc').forEach(w=>{const ask=()=>{w.innerHTML=`<span class="small"><b>Clear every answer and start again?</b></span> <button class="btn" data-yes>Yes, clear</button> <button class="btn ghost" data-no>Cancel</button>`;
@@ -430,6 +435,133 @@ function tierCard(a,b,list){
   <div><h3>What a tier is</h3><p class="q-help" style="margin-top:6px">Each plan sorts the drugs it covers into its own numbered tiers and sets a price for each tier. The same drug can be on a different tier in each plan, and the same tier number can cost different amounts from plan to plan, so compare what you would pay, not the tier number. A drug’s yearly cost also depends on whether the plan’s deductible applies to its tier.</p></div>
   <div><h3>Your drugs across all ${list.length} plans in this list</h3><ul>${spread.map(v=>`<li><b>${esc(drugLabel(v.d))}:</b> ${v.text}${v.varies?'':' (the same everywhere)'}</li>`).join('')}</ul></div></section>`;
 }
+/* ---------- PDF then Email ----------
+   A small PDF writer (Helvetica text and rules only) so the summary needs no outside library, a plain-text version of
+   the same summary for the email body, and a draft email the adviser sends by hand. Nothing here is sent by the page. */
+const HW=[278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+const pdfAscii=t=>String(t).replace(/[’‘]/g,"'").replace(/[“”]/g,'"').replace(/[–—]/g,'-').replace(/\s*·\s*/g,' - ').replace(/×/g,'x').replace(/…/g,'...').replace(/[^\x20-\x7e]/g,'');
+const pdfW=(t,size,bold)=>{let w=0;for(const c of t)w+=HW[c.charCodeAt(0)-32]||556;return w*size/1000*(bold?1.08:1)};
+function pdfWrap(t,width,size,bold){const out=[];let line='';
+  for(const word of pdfAscii(t).split(/\s+/).filter(Boolean)){const tryLine=line?line+' '+word:word;
+    if(pdfW(tryLine,size,bold)<=width||!line)line=tryLine;else{out.push(line);line=word}}
+  if(line)out.push(line);return out.length?out:['']}
+class Pdf{
+  constructor(){this.pages=[];this.W=612;this.H=792;this.M=46;this.add()}
+  add(){this.ops=[];this.pages.push(this.ops);this.y=this.H-this.M}
+  need(h){if(this.y-h<this.M)this.add()}
+  text(t,x,y,size=10,bold=false){this.ops.push(`BT /${bold?'F2':'F1'} ${size} Tf ${x.toFixed(1)} ${y.toFixed(1)} Td (${pdfAscii(t).replace(/([\\()])/g,'\\$1')}) Tj ET`)}
+  rule(x1,y,x2,w=0.5){this.ops.push(`${w} w ${x1.toFixed(1)} ${y.toFixed(1)} m ${x2.toFixed(1)} ${y.toFixed(1)} l S`)}
+  para(t,{size=10,bold=false,gap=4}={}){for(const l of pdfWrap(t,this.W-2*this.M,size,bold)){this.need(size*1.3);this.y-=size*1.3;this.text(l,this.M,this.y,size,bold)}this.y-=gap}
+  heading(t){this.need(40);this.y-=8;this.para(t,{size:11.5,bold:true,gap:3});this.rule(this.M,this.y,this.W-this.M,1);this.y-=3}
+  table(rows,widths,{size=9,head=false}={}){const pad=4,x0=this.M,full=widths.reduce((a,b)=>a+b,0);
+    rows.forEach((row,ri)=>{const cells=row.map((c,i)=>{const o=c&&typeof c==='object'?c:{t:c},bold=!!o.bold||(head&&ri===0);
+        return{bold,lines:String(o.t??'').split('\n').flatMap(v=>pdfWrap(v,widths[i]-2*pad,size,bold))}});
+      const h=Math.max(...cells.map(c=>c.lines.length))*size*1.25+2*pad-2; this.need(h);
+      let x=x0; cells.forEach((c,i)=>{c.lines.forEach((l,k)=>this.text(l,x+pad,this.y-pad-size*0.85-k*size*1.25,size,c.bold));x+=widths[i]});
+      this.y-=h; this.rule(x0,this.y,x0+full,head&&ri===0?1:0.3)});
+    this.y-=5}
+  blob(){const n=this.pages.length,o=[];
+    o[1]='<< /Type /Catalog /Pages 2 0 R >>';
+    o[2]=`<< /Type /Pages /Count ${n} /Kids [${this.pages.map((_,i)=>(6+2*i)+' 0 R').join(' ')}] >>`;
+    o[3]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+    o[4]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+    this.pages.forEach((ops,i)=>{const c=ops.join('\n');
+      o[5+2*i]=`<< /Length ${c.length} >>\nstream\n${c}\nendstream`;
+      o[6+2*i]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${this.W} ${this.H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${5+2*i} 0 R >>`});
+    let out='%PDF-1.4\n';const offs=[];
+    for(let i=1;i<o.length;i++){offs[i]=out.length;out+=`${i} 0 obj\n${o[i]}\nendobj\n`}
+    const xref=out.length;
+    out+=`xref\n0 ${o.length}\n0000000000 65535 f \n`+offs.slice(1).map(v=>String(v).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size ${o.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    return new Blob([out],{type:'application/pdf'})}
+}
+let CLIENT={name:'',email:''}, mailNote='';   /* the client's details stay in memory only and are never saved */
+const senderGet=()=>{try{return localStorage.getItem('pdc-sender')||''}catch(e){return ''}};
+const senderSet=v=>{try{localStorage.setItem('pdc-sender',v)}catch(e){}};
+const today=()=>new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+const helpText=()=>{const lv=lisLevel();return lv?'Extra Help, '+(lv==='zero'?'$0 copays':'copays up to '+usd(LIS[lv][0],2)+' generic and '+usd(LIS[lv][1],2)+' brand'):S.help==='unsure'?'Not sure. Estimates assume no help with costs.':'None'};
+const starText=p=>p.star!=null?p.star+' of 5 stars ('+p.starKind+')':(p.starNote||'Not rated');
+const drugPlain=(e,x)=>{const top=x.tier==null?(x.unk?'No price on file':usd(x.total,2)+' for the year'):(x.unk?'Cannot be estimated':usd(x.total,2)+' for the year');
+  const fl=flagTexts(x).map((f,i)=>x.over&&i===0&&x.flags&1?f+' (you entered '+qNum(x.q)+' per 30 days, over the limit)':f);
+  return top+'\n'+tierPay(e,x)+(x.d[3]?' - insulin, capped at $35 a month':'')+(fl.length?'\n'+fl.join(', '):'')};
+function summaryPdf(es){
+  const yr=D.meta.year, ph=S.ph!=null?D.pharm[S.ph]:null, d=new Pdf(), full=d.W-2*d.M, c0=132, cw=(full-c0)/Math.max(es.length,1);
+  d.para('Part D plan comparison - '+yr,{size:17,bold:true,gap:2});
+  d.para('Prepared for: '+(CLIENT.name||'______________________________')+'      '+today(),{size:10,gap:2});
+  d.heading('Your answers');
+  d.table([[{t:'Location',bold:true},S.zip+' - '+S.county+' County, California'],[{t:'Coverage',bold:true},{pdp:'Part D drug plans',ma:'Medicare Advantage plans with drug coverage',both:'Part D drug plans and Medicare Advantage plans'}[S.type]],
+    [{t:'Help with costs',bold:true},helpText()],[{t:'Pharmacy',bold:true},ph?ph[0]+', '+ph[1]+', '+ph[2]+' '+ph[3]:'None chosen. Standard in-network costs used.']],[c0,full-c0]);
+  if(!es.length){d.para('No plans are selected to compare.');return d.blob()}
+  d.heading(es.length===2?'The two plans compared':'Plan summary');
+  const row=(l,f,bold)=>[{t:l,bold:true},...es.map(e=>({t:f(e),bold}))];
+  d.table([['',...es.map(e=>e.plan.name+'\n'+e.plan.org+' - '+(e.plan.type==='PDP'?'Part D drug plan':'Medicare Advantage')+' - '+e.plan.id)],
+    row('Estimated total for '+yr,e=>usd(e.total,0)+(e.unk?' + unpriced drugs':''),true),
+    row('Star rating',e=>starText(e.plan)),
+    row('Premium',e=>usd(e.premMo,2)+' a month - '+usd(e.prem,2)+' for the year'),
+    row('Your share of drug costs',e=>usd(e.drug,2)),
+    row('How prescriptions are filled',e=>FILL[e.pick]),
+    row('Other ways to fill',e=>waysRows(e,(l,v,n,on)=>on?'':l+': '+(v||n)+(v&&n?' ('+n+')':'')).filter(Boolean).join('\n')),
+    row('Drug deductible',e=>e.lv?'$0 with Extra Help':usd(e.plan.ded,0)),
+    row('Your pharmacy',e=>stChip[e.st][1]+(e.st==='out'?'\n'+oonNote(e,true):'')),
+    row('Drugs on the plan\'s list',e=>e.covered+' of '+e.per.length),
+    row('Need prior authorization',e=>e.pa?e.pa+' of '+e.per.length+': '+e.per.filter(x=>x.tier!=null&&x.flags&2).map(x=>drugLabel(x.d)).join('; '):'None')],[c0,...es.map(()=>cw)],{head:true});
+  d.heading('Your prescriptions on each plan');
+  d.table([['Prescription',...es.map(e=>e.plan.name)],...S.rx.map((r,j)=>[{t:drugLabel(D.drugs[r.i])+mcgNote(D.drugs[r.i])+'\n'+r.q+' per 30 days'},...es.map(e=>drugPlain(e,e.per[j]))])],[c0,...es.map(()=>cw)],{head:true,size:8.5});
+  d.need(64+es.length*28); d.heading('Your drug costs month by month');
+  const mw=(full-96)/12;
+  d.table([['',...['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']],...es.map(e=>[e.plan.name,...e.months.map(m=>usd(m,0))])],[96,...Array(12).fill(mw)],{head:true,size:7.5});
+  d.y-=4;
+  d.para('These are estimates, not quotes. '+D.meta.priceNote+' Real prices differ by plan and pharmacy.',{size:8,gap:2});
+  d.para('Each estimate assumes every drug is filled all year by the method shown, the '+usd(CAP,0)+' yearly cap on covered drug costs and the $35 monthly insulin cap. It leaves out the Part B premium, late-enrollment penalties and medical costs. Plan data: CMS '+yr+' public files. Not affiliated with Medicare.gov. Confirm costs with the plan or at Medicare.gov before enrolling.',{size:8});
+  return d.blob();
+}
+/* The same summary as plain text, short enough to travel in an email link. */
+function summaryText(es){
+  const yr=D.meta.year, ph=S.ph!=null?D.pharm[S.ph]:null, L=[];
+  L.push('Hello'+(CLIENT.name?' '+CLIENT.name.trim().split(/\s+/)[0]:'')+',','','Here is your Part D plan comparison for '+yr+' ('+S.zip+', '+S.county+' County).','');
+  es.forEach((e,i)=>{L.push((es.length>1?(i+1)+'. ':'')+e.plan.name+': about '+usd(e.total,0)+' for the year',
+    '   Premium '+usd(e.premMo,2)+' a month. Your share of drug costs '+usd(e.drug,0)+'. Deductible '+(e.lv?'$0 with Extra Help':usd(e.plan.ded,0))+'.',
+    '   '+starText(e.plan)+'. Pharmacy: '+stChip[e.st][1].toLowerCase()+'. '+FILL[e.pick]+'.'+(e.pa?' '+e.pa+' of '+e.per.length+' drugs need prior authorization.':'')+(e.covered<e.per.length?' '+(e.per.length-e.covered)+' not covered.':''),'')});
+  let rx=S.rx.map(r=>drugLabel(D.drugs[r.i])+' ('+r.q+' per 30 days)');
+  if(rx.length>8)rx=[...rx.slice(0,8),'and '+(rx.length-8)+' more'];
+  L.push('Your prescriptions: '+rx.join('; ')+'.','Pharmacy: '+(ph?ph[0]+', '+ph[2]:'none chosen')+'. Help with costs: '+helpText(),'',
+    'These are estimates from CMS public data, not quotes. Please confirm costs with the plan or at Medicare.gov before enrolling.');
+  return L.join('\n').replace(/[’‘]/g,"'");
+}
+const pdfName=()=>'Part-D-comparison-'+((CLIENT.name||'client').trim().replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,'')||'client')+'-'+new Date().toISOString().slice(0,10)+'.pdf';
+function saveBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000)}
+function draftUrl(body,viaGmail){const to=CLIENT.email.trim(),su='Your Part D plan comparison for '+D.meta.year,from=senderGet().trim();
+  return viaGmail&&from?'https://mail.google.com/mail/?authuser='+encodeURIComponent(from)+'&view=cm&fs=1&to='+encodeURIComponent(to)+'&su='+encodeURIComponent(su)+'&body='+encodeURIComponent(body)
+    :'mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(su)+'&body='+encodeURIComponent(body)}
+function mailCard(es,canFile){
+  es=es.filter(Boolean); if(!canFile||!es.length)return '';
+  return `<section class="card mail"><div><h2>Email this comparison</h2>
+  <p class="q-help" style="margin-top:8px">Saves a PDF of the ${es.length===2?'two compared plans':'compared plan'} to this computer and opens a draft email to your client with a short text summary. Nothing is sent until you press Send in your email.</p></div>
+  <div class="fields">
+    <label>Client’s name <input type="text" id="cname" autocomplete="off" value="${esc(CLIENT.name)}"></label>
+    <label>Client’s email address <input type="text" id="cemail" inputmode="email" autocomplete="off" value="${esc(CLIENT.email)}"></label>
+    <label>Your Gmail address (the sender) <input type="text" id="sender" inputmode="email" autocomplete="email" placeholder="you@gmail.com" value="${esc(senderGet())}"><span class="small muted">Remembered on this device only. Leave blank to use this computer’s mail app.</span></label>
+  </div>
+  <div class="acts"><button class="btn" id="pdfmail">PDF then Email</button><button class="btn link" id="pdfonly">Download the PDF only</button><button class="btn link" id="showtext">Show the text summary</button></div>
+  <div id="mailout" aria-live="polite">${mailNote}</div></section>`;
+}
+function bindMail(es){
+  es=es.filter(Boolean); const b=$('#pdfmail'); if(!b)return;
+  const out=m=>{mailNote=m;$('#mailout').innerHTML=m};
+  $('#cname').oninput=e=>{CLIENT.name=e.target.value}; $('#cemail').oninput=e=>{CLIENT.email=e.target.value}; $('#sender').onchange=e=>senderSet(e.target.value.trim());
+  const makePdf=()=>{try{const blob=summaryPdf(es),name=pdfName();saveBlob(blob,name);return name}catch(err){return null}};
+  $('#pdfonly').onclick=()=>{const n=makePdf();out(n?`<p class="banner ex">Saved <b>${esc(n)}</b> to your downloads.</p>`:'<p class="banner warn">The PDF could not be created on this device.</p>')};
+  $('#showtext').onclick=()=>{out(`<p class="small muted">Text summary, ready to copy:</p><textarea id="mailtext" readonly>${esc(summaryText(es))}</textarea>`);const t=$('#mailtext');t.focus();t.select()};
+  b.onclick=()=>{
+    senderSet($('#sender').value.trim());
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(CLIENT.email.trim())){out('<p class="banner warn">Enter the client’s email address first.</p>');$('#cemail').focus();return}
+    const name=makePdf(), text=summaryText(es), gmail=!!senderGet();
+    const body=name?text+'\n\nThe full comparison is in the attached PDF.':text;
+    const w=window.open(draftUrl(body,true),gmail?'_blank':'_self');
+    out(`<div class="banner ${name?'ex':'warn'}"><p><b>${name?'Step 1 done: the PDF is in your downloads':'The PDF could not be created, so the email carries the text summary instead'}.</b>${name?' It is named '+esc(name)+'.':''}</p>
+      <p style="margin-top:6px"><b>${name?'Step 2: ':''}A draft email to ${esc(CLIENT.email.trim())} ${gmail?'opened in Gmail'+(w?'':' could not open because this browser blocked the new tab'):'opened in your mail app'}.</b> ${name?'A web page cannot attach a file to an email, so drag the PDF from your downloads into the draft. ':''}Check it, then press Send. ${gmail&&!w?`<a href="${esc(draftUrl(body,true))}" target="_blank" rel="noopener">Open the draft</a>`:''}</p>
+      <p style="margin-top:6px" class="small">If the draft did not open, <a href="${esc(draftUrl(body,false))}">use this computer’s mail app instead</a>, or use “Show the text summary” and paste it into an email yourself.</p></div>`);
+  };
+}
 function printDoc(es){
   const yr=D.meta.year, lv=lisLevel(), ph=S.ph!=null?D.pharm[S.ph]:null;
   const lisTxt=l=>l==='zero'?'$0 copays':'copays up to '+usd(LIS[l][0],2)+' generic and '+usd(LIS[l][1],2)+' brand';
@@ -511,6 +643,7 @@ function vRes(){
   ${lisLevel()?`<div class="banner ex"><b>These estimates include Extra Help.</b> ${{zero:'$0 copays',low:'Copays of up to '+usd(LIS.low[0],2)+' for generics and '+usd(LIS.low[1],2)+' for brand-name drugs',std:'Copays of up to '+usd(LIS.std[0],2)+' for generics and '+usd(LIS.std[1],2)+' for brand-name drugs'}[lisLevel()]}, no drug deductible, and each plan’s reduced premium. <button class="btn link" data-go="2">Change</button></div>`:S.help==='unsure'?`<div class="banner warn"><b>These estimates do not include help with costs.</b> If you get Medi-Cal, SSI, a Medicare Savings Program or Extra Help, your premiums and drug costs will be lower than shown. <button class="btn link" data-go="2">Choose a program</button> to see estimates with that help.</div>`:''}
   <section style="display:flex;flex-direction:column;gap:12px"><div class="sidehead"><h2>Side by side</h2>${canPrint?'<button class="btn ghost" id="print">Print this comparison</button>':''}</div><p class="muted small">Starts with the two lowest-cost plans. Tick “Compare” on any two plans in the list to change it.</p>
     <div class="cmp">${cmpCol(by[S.cmp[0]])}${cmpCol(by[S.cmp[1]])}</div></section>
+  ${mailCard(S.cmp.map(i=>by[i]),canPrint)}
   ${tierCard(by[S.cmp[0]],by[S.cmp[1]],list)}
   ${starCard(S.cmp.map(i=>by[i]))}
   <section style="display:flex;flex-direction:column;gap:12px"><h2>${list.length} plan${list.length===1?'':'s'} available</h2>
@@ -527,6 +660,7 @@ function vRes(){
     <p>Plans, deductibles, drug lists, tiers, copays and pharmacy networks come from the CMS {{YEAR}} Prescription Drug Plan Formulary and Pharmacy Network file (${esc(D.meta.planFile)}). Premiums come from the CMS {{YEAR}} landscape file (${esc(D.meta.landscapeFile)}). Star ratings are the CMS {{YEAR}} Star Ratings: the Part D rating for drug plans and the overall rating for Medicare Advantage plans.</p>
     <p><b>Drug prices are estimates.</b> ${esc(D.meta.priceNote)} Real prices differ by plan and pharmacy, which matters most for drugs with a percentage cost share and before the deductible is met.</p>
     <p><b>Ways to fill.</b> Each plan is estimated three ways: a 30-day fill every month at your pharmacy, a 90-day fill every three months at your pharmacy, and a 90-day fill every three months from the plan’s mail-order pharmacy (its preferred mail pharmacy where it has one). A drug the plan does not offer as a 90-day fill stays on monthly fills. A 90-day fill is priced at three times the 30-day price, the insulin cap is $35 for each month supplied, and with Extra Help a 90-day fill costs one copay. Your doctor has to write the prescription for 90 days.</p>
+    <p><b>Emailing a comparison.</b> “PDF then Email” makes the PDF in your browser and opens a draft in your own email; this page sends nothing itself and does not store the client’s name or email address. The sender address is kept only in this browser.</p>
     <p><b>Star ratings.</b> The breakdown shows CMS’s {{YEAR}} Star Ratings data tables as published: summary ratings, the nine rated areas, and each measure’s stars and result with the period it was measured over. Ratings are given per contract, not per plan. Plans too new or too small to be measured show CMS’s own wording.</p>
     <p><b>Tiers.</b> The tier shown for each drug is the one in the plan’s CMS formulary file. The comparison of two plans lists each drug’s tier, what the plan charges for it and the yearly cost on each plan, and marks drugs that are on different tiers. CMS’s file gives tier numbers but not the plans’ names for them.</p>
     <p><b>Prior authorization.</b> Each plan shows how many of your drugs need the plan’s approval before it will cover them, as listed in the CMS formulary file. Your prescriber asks for the approval. The count does not change the cost estimate, and a plan can turn a request down.</p>
@@ -538,6 +672,7 @@ function vRes(){
   <div class="row end"><button class="btn ghost" id="back">Back</button>${newBtn()}</div>
   ${printDoc(S.cmp.map(i=>by[i]).filter(Boolean))}</div>`;
   const pb=$('#print'); if(pb)pb.onclick=()=>{fitPrint();window.print()};
+  bindMail(S.cmp.map(i=>by[i]));
   fitPrint(); if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fitPrint);
   $('#sort').value=S.sort; $('#sort').onchange=e=>{S.sort=e.target.value;save();vRes()};
   $('#fill').value=S.fill||'r30'; $('#fill').onchange=e=>{S.fill=e.target.value;S.cmp=[];save();vRes()};
