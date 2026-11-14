@@ -303,16 +303,30 @@ def main():
         rx_ndc.setdefault(r['RXCUI'], set()).add(r['NDC'])
     if years != {str(year)}:
         raise SystemExit(f'Monthly file is for contract year {sorted(years)}, but config.json says {year}.')
-    cost = collections.defaultdict(dict)
+    # DAYS_SUPPLY: 1 = 30 days, 2 = 90 days (CMS record layout). COVERAGE_LEVEL 1 = initial coverage.
+    cost, cost90 = collections.defaultdict(dict), collections.defaultdict(dict)
     for r in table(monthly, 'beneficiary cost file'):
-        if plan_key(r) in plans_set and r['DAYS_SUPPLY'] == '1' and r['COVERAGE_LEVEL'] == '1':
+        if plan_key(r) not in plans_set or r['COVERAGE_LEVEL'] != '1':
+            continue
+        ded = 1 if r['DED_APPLIES_YN'] == 'Y' else 0
+        if r['DAYS_SUPPLY'] == '1':
             cost[plan_key(r)][r['TIER']] = [int(r['COST_TYPE_PREF']), float(r['COST_AMT_PREF']), int(r['COST_TYPE_NONPREF']),
-                                             float(r['COST_AMT_NONPREF']), 1 if r['DED_APPLIES_YN'] == 'Y' else 0]
+                                             float(r['COST_AMT_NONPREF']), ded]
+        elif r['DAYS_SUPPLY'] == '2':
+            # retail preferred, retail standard, mail preferred, mail standard (type, amount each), deductible flag
+            cost90[plan_key(r)][r['TIER']] = [int(r['COST_TYPE_PREF']), float(r['COST_AMT_PREF']), int(r['COST_TYPE_NONPREF']), float(r['COST_AMT_NONPREF']),
+                                               int(r['COST_TYPE_MAIL_PREF']), float(r['COST_AMT_MAIL_PREF']), int(r['COST_TYPE_MAIL_NONPREF']),
+                                               float(r['COST_AMT_MAIL_NONPREF']), ded]
     low = lambda *v: min([float(x) for x in v if x.strip()], default=None)
-    insulin = collections.defaultdict(dict)
+    insulin, insulin90 = collections.defaultdict(dict), collections.defaultdict(dict)
     for r in table(monthly, 'insulin beneficiary cost'):
-        if plan_key(r) in plans_set and r['DAYS_SUPPLY'] == '1':
+        if plan_key(r) not in plans_set:
+            continue
+        if r['DAYS_SUPPLY'] == '1':
             insulin[plan_key(r)][r['TIER']] = [low(r['copay_amt_pref_insln']), low(r['copay_amt_nonpref_insln'])]
+        elif r['DAYS_SUPPLY'] == '2':
+            insulin90[plan_key(r)][r['TIER']] = [low(r['copay_amt_pref_insln']), low(r['copay_amt_nonpref_insln']),
+                                                 low(r['copay_amt_mail_pref_insln']), low(r['copay_amt_mail_nonpref_insln'])]
     geo = collections.defaultdict(list)
     for r in table(monthly, 'geographic locator'):
         if r['STATENAME'].strip() == 'California' and '(Partial)' not in r['COUNTY']:
@@ -422,7 +436,7 @@ def main():
         plans.append(dict(id='-'.join(k), name=r['PLAN_NAME'].strip(), org=(s[c_name] if s else r['CONTRACT_NAME']).strip(),
                           type='PDP' if pdp else 'MA', snp=int(r['SNP'] or 0), f=fidx[r['FORMULARY_ID']], prem=prem, premLis=prem_lis,
                           ded=float(r['DEDUCTIBLE']), cty=None if pdp else sorted({x['COUNTY_CODE'] for x in rs}), star=star,
-                          starKind=kind, starNote=note, net=nkey[nk], cost=cost[k], ins=insulin.get(k, {})))
+                          starKind=kind, starNote=note, net=nkey[nk], cost=cost[k], ins=insulin.get(k, {}), c90=cost90.get(k, {}), ins90=insulin90.get(k, {})))
     # ZIP centres for every ZIP a person can enter and every pharmacy ZIP; a pharmacy ZIP with no area of its own
     # (a PO box or single-building ZIP) borrows the centre of the closest-numbered ZIP that has one.
     have = sorted(z for z in centres if z[:1] == '9')
