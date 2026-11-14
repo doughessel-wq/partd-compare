@@ -197,7 +197,7 @@ function plansFor(){
 function stars(p){ if(p.star==null)return `<span class="small muted">${esc(p.starNote||'No rating')}</span>`;
   return `<span title="${p.star} out of 5 stars"><span class="stars" aria-hidden="true">★★★★★<i style="width:${p.star*20}%">★★★★★</i></span> <span class="small num">${p.star} of 5</span></span>`; }
 const stChip={pref:['good','Preferred pharmacy'],std:['plain','In network (standard cost)'],out:['bad','Not in network'],none:['plain','No pharmacy chosen']};
-function go(n){S.step=n;save();render();window.scrollTo(0,0)}
+function go(n){if(n!==4)phPlan=null;S.step=n;save();render();window.scrollTo(0,0)}
 function nav(back,nextLabel,ok=true){return `<div class="row end"><button class="btn ghost" id="back" ${back?'':'hidden'}>Back</button><button class="btn" id="next" ${ok?'':'disabled'}>${nextLabel||'Continue'}</button></div>`}
 function bindNav(){const b=$('#back'),n=$('#next');if(b)b.onclick=()=>go(S.step-1);if(n)n.onclick=()=>go(S.step+1)}
 function exBanner(){return S.example?`<div class="banner ex">These answers are an <b>example</b> so you can see how the tool works. <button class="btn link" id="clear">Clear and start with my own answers</button></div>`:''}
@@ -276,17 +276,28 @@ function vRx(){
   bindList(); bindNav();
 }
 function phLabel(i){const p=D.pharm[i];return `<b>${esc(p[0])}</b><br><span class="small muted">${esc(p[1])}, ${esc(p[2])} ${esc(p[3])}</span>`}
+let phPlan=null; /* when set, the pharmacy step lists only this plan's in-network pharmacies */
+const isKaiser=p=>/kaiser/i.test(p.org+' '+p.name);
+function oonNote(e,short){ if(e.st!=='out')return '';
+  return isKaiser(e.plan)?(short?'Kaiser plans mainly use Kaiser’s own pharmacies, and the one you chose is not in this plan’s network. Full price assumed.':'Kaiser Permanente plans fill prescriptions mainly at Kaiser’s own pharmacies, and the pharmacy you chose is not in this plan’s network. This estimate assumes you pay full price for every fill, which is why it is so high.')
+    :(short?'The pharmacy you chose is not in this plan’s network. Full price assumed.':'The pharmacy you chose is not in this plan’s network, so this estimate assumes you pay full price for every fill.') }
+const oonLink=e=>e.st==='out'?` <button class="btn link" data-phplan="${esc(e.plan.id)}">See ${isKaiser(e.plan)?'Kaiser pharmacies':'this plan’s pharmacies'} near you</button>`:'';
 function vPh(){
+  const only=phPlan&&D.plans.find(x=>x.id===phPlan), inNet=only?nets[only.net][0]:null;
   $('#view').innerHTML=`<section class="card"><h2>Where do you fill your prescriptions?</h2><p class="q-help">Plans charge less at their preferred pharmacies and may not cover a pharmacy outside their network. Search by pharmacy name, city or ZIP code.</p>
-  <div class="search"><input type="text" id="pq" placeholder="Search pharmacies" aria-label="Search pharmacies" autocomplete="off" value="${S.ph==null?esc(S.zip||''):''}"><ul class="hits" id="phh"></ul></div>
+  <div class="search"><input type="text" id="pq" placeholder="Search pharmacies" aria-label="Search pharmacies" autocomplete="off" value="${S.ph==null&&!only?esc(S.zip||''):''}">
+  ${only?`<p class="banner ex" id="onlynote">Showing only pharmacies in the network of <b>${esc(only.name)}</b>, nearest ZIP codes first. <button class="btn link" id="allph">Show all pharmacies</button></p>`:''}
+  <ul class="hits" id="phh"></ul></div>
   <div id="cur"></div>${nav(true,'See plans')}</section>`;
   const cur=()=>{$('#cur').innerHTML=S.ph!=null?`<p class="small muted">Your pharmacy</p><p>${phLabel(S.ph)} &nbsp;<button class="btn link" id="phx">Remove</button></p>`:'<p class="muted">No pharmacy chosen. Estimates will use each plan’s standard in-network cost.</p>';
     const x=$('#phx');if(x)x.onclick=()=>{S.ph=null;touched();save();cur();find()}};
-  const find=()=>{const raw=$('#pq').value.trim()||(S.zip||''),t=raw.toLowerCase().split(/\s+/).filter(Boolean),h=$('#phh'),out=[];
-    for(let i=0;i<D.pharm.length&&out.length<40;i++){const p=D.pharm[i],n=(p[0]+' '+p[2]+' '+p[3]).toLowerCase();if(t.every(w=>n.includes(w)))out.push(i)}
+  const find=()=>{const typed=$('#pq').value.trim(),raw=typed||(inNet?'':(S.zip||'')),t=raw.toLowerCase().split(/\s+/).filter(Boolean),h=$('#phh');let out=[];
+    for(let i=0;i<D.pharm.length;i++){if(inNet&&!bit(inNet,i))continue;const p=D.pharm[i],n=(p[0]+' '+p[2]+' '+p[3]).toLowerCase();if(t.every(w=>n.includes(w)))out.push(i)}
+    const z=+S.zip||0;out=out.sort((a,b)=>Math.abs(D.pharm[a][3]-z)-Math.abs(D.pharm[b][3]-z)||a-b).slice(0,40);
     h.innerHTML=out.length?out.map(i=>`<li><button data-i="${i}" class="${i===S.ph?'sel':''}">${phLabel(i)}</button></li>`).join(''):'<li><button disabled>No pharmacy found</button></li>';
     h.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{S.ph=+b.dataset.i;touched();save();cur();find()})};
   $('#pq').oninput=find; cur(); find(); bindNav();
+  const ap=$('#allph'); if(ap)ap.onclick=()=>{phPlan=null;vPh()};
 }
 
 function cmpCol(e){ if(!e)return '<div><p class="muted">Tick “Compare” on a plan below to show it here.</p></div>';
@@ -295,7 +306,7 @@ function cmpCol(e){ if(!e)return '<div><p class="muted">Tick “Compare” on a 
   <div>${stars(p)} <span class="small muted">${p.star!=null?esc(p.starKind):''}</span></div>
   <div><p class="small muted">Estimated total for 2027</p><p class="big num">${usd(e.total,0)}${e.unk?'<span style="font-size:1rem"> + unpriced drugs</span>':''}</p></div>
   <dl class="kv"><dt>Premiums (${usd(e.premMo,2)} × 12)</dt><dd>${usd(e.prem,2)}</dd><dt>Your share of drug costs</dt><dd>${usd(e.drug,2)}</dd><dt>Drug deductible</dt><dd>${e.lv?'$0 with Extra Help':usd(p.ded,0)}</dd><dt>Drugs on the plan’s list</dt><dd>${e.covered} of ${e.per.length}</dd></dl>
-  <p><span class="chip ${ch[0]}">${ch[1]}</span>${e.st==='out'?' <span class="small">Full price assumed for every fill.</span>':''}</p>
+  <p><span class="chip ${ch[0]}">${ch[1]}</span></p>${e.st==='out'?`<p class="small">${oonNote(e)}${oonLink(e)}</p>`:''}
   <div><p class="small muted">Your drug costs month by month</p><div class="bars" role="img" aria-label="Monthly drug costs, January to December: ${e.months.map(m=>usd(m,0)).join(', ')}">${e.months.map(m=>`<span style="height:${Math.round(m/mx*100)}%" title="${usd(m,2)}"></span>`).join('')}</div><div class="barlab">${'JFMAMJJASOND'.split('').map(c=>`<span>${c}</span>`).join('')}</div>
   <p class="small muted">January ${usd(e.months[0],2)} · December ${usd(e.months[11],2)}${e.capMonth?' · reaches the '+usd(CAP,0)+' yearly cap':''}</p></div>
   <div class="drugs">${e.per.map(x=>{const fl=['Quantity limit','Prior authorization','Step therapy'].filter((_,b)=>x.flags>>b&1);
@@ -321,7 +332,7 @@ function printDoc(es){
   ${row('Premium',e=>usd(e.premMo,2)+' a month · '+usd(e.prem,2)+' for the year')}
   ${row('Your share of drug costs',e=>usd(e.drug,2))}
   ${row('Drug deductible',e=>e.lv?'$0 with Extra Help':usd(e.plan.ded,0))}
-  ${row('Your pharmacy',e=>stChip[e.st][1])}
+  ${row('Your pharmacy',e=>stChip[e.st][1]+(e.st==='out'?'<br><small>'+oonNote(e,true)+'</small>':''))}
   ${row('Drugs on the plan’s list',e=>e.covered+' of '+e.per.length)}
   </tbody></table>
   <h2>Your prescriptions on each plan</h2>
@@ -387,7 +398,7 @@ function vRes(){
     <ul class="plans">${list.map(e=>{const p=e.plan,ch=stChip[e.st],on=S.cmp.includes(p.id);
       return `<li class="${on?'on':''}"><div style="min-width:0;display:grid;gap:4px"><h3>${esc(p.name)}</h3>
       <div class="meta"><span>${esc(p.org)}</span>${stars(p)}<span class="chip ${ch[0]}">${ch[1]}</span>${e.covered<e.per.length?`<span class="chip bad">${e.per.length-e.covered} drug${e.per.length-e.covered===1?'':'s'} not covered</span>`:''}${p.snp?`<span class="chip warn">${['','Chronic condition SNP','Dual-eligible SNP','Institutional SNP'][p.snp]}</span>`:''}</div>
-      <div class="meta num"><span>Premium ${usd(e.premMo,2)}/month</span><span>Deductible ${usd(e.lv?0:p.ded,0)}</span><span>Drug costs ${usd(e.drug,0)}/year</span></div></div>
+      <div class="meta num"><span>Premium ${usd(e.premMo,2)}/month</span><span>Deductible ${usd(e.lv?0:p.ded,0)}</span><span>Drug costs ${usd(e.drug,0)}/year</span></div>${e.st==='out'&&isKaiser(p)?`<div class="small">${oonNote(e,true)}${oonLink(e)}</div>`:''}</div>
       <div class="tot"><b class="num">${usd(e.total,0)}${e.unk?'+':''}</b><span class="small muted">estimated for 2027</span><label style="justify-content:flex-end;margin-top:6px"><input type="checkbox" data-c="${esc(p.id)}" ${on?'checked':''}> Compare</label></div></li>`}).join('')||'<li>No plans match. Try a different coverage type.</li>'}</ul></section>
   <details class="card"><summary><b>How these estimates are worked out, and what they leave out</b></summary>
     <p>Plans, deductibles, drug lists, tiers, copays and pharmacy networks come from the CMS 2027 Prescription Drug Plan Formulary and Pharmacy Network file (${esc(D.meta.planFile)}). Premiums come from the CMS 2027 landscape file (${esc(D.meta.landscapeFile)}). Star ratings are the CMS 2027 Star Ratings: the Part D rating for drug plans and the overall rating for Medicare Advantage plans.</p>
@@ -402,6 +413,7 @@ function vRes(){
   fitPrint(); if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fitPrint);
   $('#sort').value=S.sort; $('#sort').onchange=e=>{S.sort=e.target.value;save();vRes()};
   const sn=$('#snp'); if(sn)sn.onchange=()=>{S.snp=sn.checked;save();vRes()};
+  document.querySelectorAll('[data-phplan]').forEach(x=>x.onclick=()=>{phPlan=x.dataset.phplan;S.step=4;save();render();window.scrollTo(0,0)});
   const dn=$('#dsnp'); if(dn)dn.onchange=()=>{S.dsnp=dn.checked;save();vRes()};
   const sm=$('#showma'); if(sm)sm.onclick=()=>{S.type='both';S.cmp=[];save();vRes()};
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(+b.dataset.go));
