@@ -63,6 +63,7 @@ of plans, drugs and pharmacies when it finishes.
 - CMS Star Ratings data tables (cms.gov)
 - CMS Landscape file (cms.gov) for premiums: combined medical and drug premiums for Medicare Advantage plans, and each plan's premium with Extra Help
 - NLM RxNorm for drug names, CMS NPI Registry for pharmacy names, Census ZCTA-to-county table for ZIP codes
+- Census ZCTA gazetteer for ZIP code centres, used to sort pharmacies by distance
 
 The yearly values in `config.json` come from Table V-2 of the CMS rate announcement for the plan year
 (for 2027: https://www.cms.gov/files/document/2027-announcement.pdf).
@@ -73,4 +74,5 @@ The yearly values in `config.json` come from Table V-2 of the CMS rate announcem
 - Extra Help is modelled as the full subsidy at one of three copay levels the user picks. Generic versus brand copays follow RxNorm, which can differ from a plan's own classification. Other state or pharmacy assistance is not modelled.
 - The Medicare Part B premium is not included.
 - Only 30-day retail fills are estimated.
+- Pharmacy distances are straight-line miles between ZIP code centres, not driving distance from a street address.
 - The $35 insulin cap is fixed in `build/app.html`.

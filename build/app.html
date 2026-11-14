@@ -273,6 +273,9 @@ function vRx(){
     h.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if(!S.rx.some(r=>r.i===i))S.rx.push({i,q:30});touched();save();$('#dq').value='';h.hidden=true;bindList()}) };
   bindList(); bindNav();
 }
+/* Straight-line miles between the centres of two ZIP codes. */
+function miles(a,b){const p=D.zll[a],q=D.zll[b];if(!p||!q)return null;const r=Math.PI/180,x=Math.sin((q[0]-p[0])*r/2)**2+Math.cos(p[0]*r)*Math.cos(q[0]*r)*Math.sin((q[1]-p[1])*r/2)**2;return 7917.6*Math.asin(Math.sqrt(x))}
+const milesText=m=>m==null?'':m<0.5?' · in your ZIP code':' · about '+(m<10?Math.round(m*2)/2:Math.round(m))+' mi';
 function phLabel(i){const p=D.pharm[i];return `<b>${esc(p[0])}</b><br><span class="small muted">${esc(p[1])}, ${esc(p[2])} ${esc(p[3])}</span>`}
 let phPlan=null; /* when set, the pharmacy step lists only this plan's in-network pharmacies */
 const isKaiser=p=>/kaiser/i.test(p.org+' '+p.name);
@@ -282,17 +285,18 @@ function oonNote(e,short){ if(e.st!=='out')return '';
 const oonLink=e=>e.st==='out'?` <button class="btn link" data-phplan="${esc(e.plan.id)}">See ${isKaiser(e.plan)?'Kaiser pharmacies':'this plan’s pharmacies'} near you</button>`:'';
 function vPh(){
   const only=phPlan&&D.plans.find(x=>x.id===phPlan), inNet=only?nets[only.net][0]:null;
-  $('#view').innerHTML=`<section class="card"><h2>Where do you fill your prescriptions?</h2><p class="q-help">Plans charge less at their preferred pharmacies and may not cover a pharmacy outside their network. Search by pharmacy name, city or ZIP code.</p>
+  $('#view').innerHTML=`<section class="card"><h2>Where do you fill your prescriptions?</h2><p class="q-help">Plans charge less at their preferred pharmacies and may not cover a pharmacy outside their network. Search by pharmacy name, city or ZIP code. The nearest pharmacies are listed first.</p>
   <div class="search"><input type="text" id="pq" placeholder="Search pharmacies" aria-label="Search pharmacies" autocomplete="off" value="${S.ph==null&&!only?esc(S.zip||''):''}">
-  ${only?`<p class="banner ex" id="onlynote">Showing only pharmacies in the network of <b>${esc(only.name)}</b>, nearest ZIP codes first. <button class="btn link" id="allph">Show all pharmacies</button></p>`:''}
+  ${only?`<p class="banner ex" id="onlynote">Showing only pharmacies in the network of <b>${esc(only.name)}</b>, nearest first. <button class="btn link" id="allph">Show all pharmacies</button></p>`:''}
   <ul class="hits" id="phh"></ul></div>
   <div id="cur"></div>${nav(true,'See plans')}</section>`;
   const cur=()=>{$('#cur').innerHTML=S.ph!=null?`<p class="small muted">Your pharmacy</p><p>${phLabel(S.ph)} &nbsp;<button class="btn link" id="phx">Remove</button></p>`:'<p class="muted">No pharmacy chosen. Estimates will use each plan’s standard in-network cost.</p>';
     const x=$('#phx');if(x)x.onclick=()=>{S.ph=null;touched();save();cur();find()}};
   const find=()=>{const typed=$('#pq').value.trim(),raw=typed||(inNet?'':(S.zip||'')),t=raw.toLowerCase().split(/\s+/).filter(Boolean),h=$('#phh');let out=[];
     for(let i=0;i<D.pharm.length;i++){if(inNet&&!bit(inNet,i))continue;const p=D.pharm[i],n=(p[0]+' '+p[2]+' '+p[3]).toLowerCase();if(t.every(w=>n.includes(w)))out.push(i)}
-    const z=+S.zip||0;out=out.sort((a,b)=>Math.abs(D.pharm[a][3]-z)-Math.abs(D.pharm[b][3]-z)||a-b).slice(0,40);
-    h.innerHTML=out.length?out.map(i=>`<li><button data-i="${i}" class="${i===S.ph?'sel':''}">${phLabel(i)}</button></li>`).join(''):'<li><button disabled>No pharmacy found</button></li>';
+    const dist=new Map(out.map(i=>[i,miles(S.zip,D.pharm[i][3])]));
+    out=out.sort((a,b)=>(dist.get(a)??1e9)-(dist.get(b)??1e9)||a-b).slice(0,40);
+    h.innerHTML=out.length?out.map(i=>`<li><button data-i="${i}" class="${i===S.ph?'sel':''}">${phLabel(i)}<span class="small muted">${milesText(dist.get(i))}</span></button></li>`).join(''):'<li><button disabled>No pharmacy found</button></li>';
     h.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{S.ph=+b.dataset.i;touched();save();cur();find()})};
   $('#pq').oninput=find; cur(); find(); bindNav();
   const ap=$('#allph'); if(ap)ap.onclick=()=>{phPlan=null;vPh()};
@@ -403,7 +407,7 @@ function vRes(){
     <p><b>Drug prices are estimates.</b> ${esc(D.meta.priceNote)} Real prices differ by plan and pharmacy, which matters most for drugs with a percentage cost share and before the deductible is met.</p>
     <p>Each estimate assumes one 30-day retail fill of every drug in each month of {{YEAR}}, the plan deductible where it applies to the drug’s tier, the ${usd(CAP,0)} yearly cap on what you pay for covered drugs, and the $35 monthly cap on covered insulin. A pharmacy outside the plan’s network, or a drug not on the plan’s list, is charged at full price.</p>
     <p><b>Extra Help.</b> When you choose a program in step 3, each plan uses its premium for people with the full subsidy from the CMS landscape file, the drug deductible is removed, and each covered fill costs the lower of the plan’s price and the {{YEAR}} Extra Help copay for your level. The yearly cap is reached at the same point it would be without Extra Help, after which covered drugs cost $0. Generic and brand copays follow whether RxNorm lists the drug as generic or brand, which can differ from how a plan classifies it.</p>
-    <p>Special Needs Plans are hidden unless you tick the box, except that plans for people with both Medicare and Medi-Cal (D-SNPs) are shown when you choose Medi-Cal or SSI in step 3. Left out: the Medicare Part B premium, mail order and 90-day fills, late-enrollment penalties, income-related premium surcharges, state help beyond Extra Help, and medical costs. For Medicare Advantage plans the premium is the plan’s combined medical and drug premium from the CMS landscape file. ZIP codes are matched to counties with the Census ZIP Code Tabulation Area table, which can differ from postal ZIP codes at the edges. Pharmacy names come from the CMS provider registry.</p>
+    <p>Special Needs Plans are hidden unless you tick the box, except that plans for people with both Medicare and Medi-Cal (D-SNPs) are shown when you choose Medi-Cal or SSI in step 3. Left out: the Medicare Part B premium, mail order and 90-day fills, late-enrollment penalties, income-related premium surcharges, state help beyond Extra Help, and medical costs. For Medicare Advantage plans the premium is the plan’s combined medical and drug premium from the CMS landscape file. ZIP codes are matched to counties with the Census ZIP Code Tabulation Area table, which can differ from postal ZIP codes at the edges. Pharmacy names come from the CMS provider registry. Pharmacy distances are straight-line miles between the centre of your ZIP code and the centre of the pharmacy’s ZIP code, so they are approximate.</p>
     <p>Confirm costs with the plan or at Medicare.gov before enrolling.</p></details>
   <div class="row end"><button class="btn ghost" id="back">Back</button>${newBtn()}</div>
   ${printDoc(S.cmp.map(i=>by[i]).filter(Boolean))}</div>`;

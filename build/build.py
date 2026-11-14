@@ -19,6 +19,7 @@ STARS_PAGE = 'https://www.cms.gov/medicare/health-drug-plans/part-c-d-performanc
 LANDSCAPE_PAGE = 'https://www.cms.gov/medicare/coverage/prescription-drug-coverage'
 RXNORM = 'https://rxnav.nlm.nih.gov/REST/allconcepts.json?tty=SCD+SBD+GPCK+BPCK'
 ZCTA = 'https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/tab20_zcta520_county20_natl.txt'
+GAZETTEER = 'https://www2.census.gov/geo/docs/maps-data/data/gazetteer/{y}_Gazetteer/{y}_Gaz_zcta_national.zip'
 NPI_API = 'https://npiregistry.cms.hhs.gov/api/?version=2.1&'
 PDP_REGION_CA, CA_FIPS = '32', '06'
 
@@ -44,6 +45,34 @@ def fetch(url, name=None, refresh=False):
             if attempt == 3:
                 raise SystemExit(f'Could not download {url}: {e}')
             time.sleep(5 * (attempt + 1))
+
+
+def zip_centres(year, refresh):
+    """Latitude and longitude of each ZIP Code Tabulation Area, from the newest Census gazetteer."""
+    path = None
+    for y in range(year, 2019, -1):
+        name = f'{y}_Gaz_zcta_national.zip'
+        if os.path.exists(os.path.join(CACHE, name)) and not refresh:
+            path = os.path.join(CACHE, name); break
+        try:
+            req = urllib.request.Request(GAZETTEER.format(y=y), headers=UA, method='HEAD')
+            if urllib.request.urlopen(req, timeout=60).status == 200:
+                path = fetch(GAZETTEER.format(y=y), name, refresh); break
+        except Exception:
+            continue
+    if not path:
+        raise SystemExit('No Census ZIP gazetteer file found.')
+    z = zipfile.ZipFile(path)
+    t = io.TextIOWrapper(z.open(z.namelist()[0]), encoding='utf-8-sig')
+    first = t.readline(); sep = '|' if '|' in first else '\t'
+    h = [c.strip() for c in first.split(sep)]
+    i_lat, i_lon = h.index('INTPTLAT'), h.index('INTPTLONG')
+    out = {}
+    for line in t:
+        r = [c.strip() for c in line.split(sep)]
+        if len(r) > i_lon:
+            out[r[0]] = [round(float(r[i_lat]), 3), round(float(r[i_lon]), 3)]
+    return out
 
 
 def inner(outer_path, key, tag):
@@ -349,6 +378,7 @@ def main():
         if r['GEOID_COUNTY_20'].startswith(CA_FIPS) and r['GEOID_ZCTA5_20']:
             zc[r['GEOID_ZCTA5_20']].append((-int(r['AREALAND_PART']), r['NAMELSAD_COUNTY_20'].replace(' County', '')))
     zips = {k: [n for _, n in sorted(v)] for k, v in zc.items()}
+    centres = zip_centres(year, args.refresh)
 
     log('6/7 Pharmacy names')
     npi = pharmacy_names(pzip)
@@ -393,6 +423,16 @@ def main():
                           type='PDP' if pdp else 'MA', snp=int(r['SNP'] or 0), f=fidx[r['FORMULARY_ID']], prem=prem, premLis=prem_lis,
                           ded=float(r['DEDUCTIBLE']), cty=None if pdp else sorted({x['COUNTY_CODE'] for x in rs}), star=star,
                           starKind=kind, starNote=note, net=nkey[nk], cost=cost[k], ins=insulin.get(k, {})))
+    # ZIP centres for every ZIP a person can enter and every pharmacy ZIP; a pharmacy ZIP with no area of its own
+    # (a PO box or single-building ZIP) borrows the centre of the closest-numbered ZIP that has one.
+    have = sorted(z for z in centres if z[:1] == '9')
+    zll, borrowed = {}, 0
+    for z in set(zips) | {v[3] for _, v in ph}:
+        if z in centres:
+            zll[z] = centres[z]
+        elif z.isdigit() and have:
+            zll[z] = centres[min(have, key=lambda h: abs(int(h) - int(z)))]; borrowed += 1
+    log(f'   {len(zll):,} ZIP centres for distances ({borrowed} borrowed from a neighbouring ZIP)')
     di = {d[0]: i for i, d in enumerate(drugs)}
     ex = cfg['example']
     local = [i for i, (p, v) in enumerate(ph) if v[3] == ex['zip'] and not v[0].startswith('Pharmacy, NPI')]
@@ -407,7 +447,7 @@ def main():
                           planFile=(f'release of {m_date}, ' if m_date else '') + os.path.basename(monthly), priceNote=price_note,
                           example=dict(zip=ex['zip'], county=ex['county'], ph=ex_ph,
                                        rx=[dict(i=di[x['rxcui']], q=x['quantity']) for x in ex['prescriptions'] if x['rxcui'] in di])),
-                zips=zips, counties=dict(geo), plans=plans, forms=[forms[f] for f in fids], drugs=drugs, pharm=[v for _, v in ph], nets=nets)
+                zips=zips, zll=zll, counties=dict(geo), plans=plans, forms=[forms[f] for f in fids], drugs=drugs, pharm=[v for _, v in ph], nets=nets)
     page = open(os.path.join(ROOT, 'build', 'app.html'), encoding='utf-8').read().replace('{{YEAR}}', str(year))
     page = page.replace('/*DATA*/null', json.dumps(data, separators=(',', ':')).replace('</', '<\\/'))
     doc = ('<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>\n'
