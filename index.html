@@ -184,6 +184,7 @@ function estimate(plan,rx,ph){
   return {plan,st,per,months,drug,lv,premMo,prem:premMo*12,total:drug+premMo*12,unk:per.some(x=>x.unk),covered:per.filter(x=>x.tier!=null).length,capMonth:oop>=CAP};
 }
 const mediCal=()=>S.help==='medicaid'||S.help==='ssi'; /* SSI recipients in California get Medi-Cal automatically */
+const dualWho=()=>S.help==='ssi'?'Medi-Cal or SSI':'Medi-Cal';
 function snpShown(p){return p.snp===2&&mediCal()?S.dsnp!==false:!!S.snp}
 function plansFor(){
   const codes=D.counties[S.county]||[];
@@ -375,13 +376,13 @@ function vRes(){
     <button class="pill" data-go="1">${{pdp:'Part D drug plans',ma:'Medicare Advantage',both:'All plan types'}[S.type]}</button>
     <button class="pill" data-go="3">${S.rx.length} prescription${S.rx.length===1?'':'s'}</button>
     <button class="pill" data-go="4">${S.ph!=null?esc(D.pharm[S.ph][0]):'No pharmacy chosen'}</button>${newBtn()}</div>
-  ${nDhidden?`<div class="banner ex"><b>${nDhidden} plan${nDhidden===1?'':'s'} in your county ${nDhidden===1?'is':'are'} built for people with Medicare and Medi-Cal.</b> These dual-eligible plans (D-SNPs) are Medicare Advantage plans, so they are not in a list of Part D drug plans. <button class="btn link" id="showma">Show Medicare Advantage plans too</button></div>`:''}
+  ${nDhidden?`<div class="banner ex"><b>${nDhidden} plan${nDhidden===1?'':'s'} in your county ${nDhidden===1?'is':'are'} built for people with Medicare and ${dualWho()}.</b> These dual-eligible plans (D-SNPs) are Medicare Advantage plans, so they are not in a list of Part D drug plans. <button class="btn link" id="showma">Show Medicare Advantage plans too</button></div>`:''}
   ${lisLevel()?`<div class="banner ex"><b>These estimates include Extra Help.</b> ${{zero:'$0 copays',low:'Copays of up to '+usd(LIS.low[0],2)+' for generics and '+usd(LIS.low[1],2)+' for brand-name drugs',std:'Copays of up to '+usd(LIS.std[0],2)+' for generics and '+usd(LIS.std[1],2)+' for brand-name drugs'}[lisLevel()]}, no drug deductible, and each plan’s reduced premium. <button class="btn link" data-go="2">Change</button></div>`:S.help==='unsure'?`<div class="banner warn"><b>These estimates do not include help with costs.</b> If you get Medi-Cal, SSI, a Medicare Savings Program or Extra Help, your premiums and drug costs will be lower than shown. <button class="btn link" data-go="2">Choose a program</button> to see estimates with that help.</div>`:''}
   <section style="display:flex;flex-direction:column;gap:12px"><div class="sidehead"><h2>Side by side</h2>${canPrint?'<button class="btn ghost" id="print">Print this comparison</button>':''}</div><p class="muted small">Starts with the two lowest-cost plans. Tick “Compare” on any two plans in the list to change it.</p>
     <div class="cmp">${cmpCol(by[S.cmp[0]])}${cmpCol(by[S.cmp[1]])}</div></section>
   <section style="display:flex;flex-direction:column;gap:12px"><h2>${list.length} plan${list.length===1?'':'s'} available</h2>
     <div class="tools"><label>Sort by <select id="sort"><option value="total">Lowest estimated yearly cost</option><option value="prem">Lowest premium</option><option value="star">Highest star rating</option></select></label>
-    ${nD?`<label><input type="checkbox" id="dsnp" ${S.dsnp!==false?'checked':''}> Include ${nD} plan${nD===1?'':'s'} for people with Medicare and Medi-Cal (D-SNP)</label>`:''}
+    ${nD?`<label><input type="checkbox" id="dsnp" ${S.dsnp!==false?'checked':''}> Include ${nD} plan${nD===1?'':'s'} for people with Medicare and ${dualWho()} (D-SNP)</label>`:''}
     ${nSnp?`<label><input type="checkbox" id="snp" ${S.snp?'checked':''}> Include ${nSnp} ${nD?'other ':''}Special Needs Plan${nSnp===1?'':'s'}</label>`:''}</div>
     <ul class="plans">${list.map(e=>{const p=e.plan,ch=stChip[e.st],on=S.cmp.includes(p.id);
       return `<li class="${on?'on':''}"><div style="min-width:0;display:grid;gap:4px"><h3>${esc(p.name)}</h3>
