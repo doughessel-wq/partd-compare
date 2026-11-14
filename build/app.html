@@ -436,11 +436,11 @@ const PAGE_W=8.5*96-2*13*96/25.4, PAGE_H=11*96-2*11*96/25.4;
 function fitPrint(){
   const d=$('#printdoc'); if(!d)return 1;
   let k=1; const keep=d.getAttribute('style')||'';
-  for(let i=0;i<4;i++){
+  for(let i=0;i<14;i++){
     d.style.cssText='display:block;position:absolute;left:-99999px;top:0;visibility:hidden;width:'+(PAGE_W/k)+'px';
     const h=d.offsetHeight*k, room=PAGE_H*0.975;
     if(h<=room)break;
-    k=Math.max(0.5,k*Math.min(0.98,Math.sqrt(room/h)));
+    k=Math.max(0.45,k*Math.min(0.98,Math.sqrt(room/h)));
   }
   d.style.cssText=keep; d.style.zoom=k; d.dataset.scale=k.toFixed(2);
   return k;
