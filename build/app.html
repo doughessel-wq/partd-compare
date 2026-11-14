@@ -244,19 +244,28 @@ function vHelp(){
     document.querySelectorAll('[name=lvl]').forEach(i=>i.onchange=()=>{S.lvl=i.value;touched();save()})};
   document.querySelectorAll('[name=help]').forEach(i=>i.onchange=()=>{S.help=i.value;S.lvl=null;touched();save();lvl()}); lvl(); bindNav();
 }
+/* Drug search. The drug list writes microgram strengths as fractions of a milligram (50 mcg is "0.05 MG"),
+   so each name also carries its mcg equivalents, and numbers in a search must match a whole number in the name. */
+const MCG=[], HAY=D.drugs.map((d,i)=>{const n=d[1].toLowerCase(),m=[];
+  n.replace(/(\d*\.\d+) mg/g,(_,v)=>{if(+v<1){const x=String(+(+v*1000).toFixed(3));if(!m.includes(x))m.push(x)}return ''});
+  MCG[i]=m.length?m:null; return n+m.map(x=>' '+x+' mcg').join('')});
+function drugTokens(q){return q.toLowerCase().replace(/[µμ]g|\bug\b|micrograms?/g,'mcg').replace(/milligrams?/g,'mg').replace(/,/g,' ')
+  .replace(/(\d)\s*(mcg|mg|ml|units?|unt)\b/g,'$1 $2').replace(/\bunits?\b/g,'unt').split(/\s+/).filter(Boolean)}
+function tokenTest(w){ if(!/^\d*\.?\d+$/.test(w))return n=>n.includes(w);
+  const r=new RegExp('(?<![\\d.])'+(w[0]==='.'?'0':'')+w.replace('.','\\.')+'(?!\\d|\\.\\d)'); return n=>r.test(n)}
 function rxList(){return S.rx.length?`<ul class="rx">${S.rx.map((r,k)=>`<li><span class="nm">${esc(drugLabel(D.drugs[r.i]))}</span><label class="small">Quantity per 30 days <input type="number" min="1" max="999" step="1" data-k="${k}" id="q${D.drugs[r.i][0]}" value="${r.q}"></label><button class="btn link" data-rm="${k}">Remove</button></li>`).join('')}</ul>`:'<p class="muted">No prescriptions added yet.</p>'}
 function vRx(){
-  $('#view').innerHTML=`<section class="card"><h2>Which prescriptions do you take?</h2><p class="q-help">Type a drug name and strength, such as “atorvastatin 20” or “Eliquis 5”, then pick the match. Enter how many tablets or capsules you fill every 30 days. For liquids, injection pens, creams and inhalers, enter the amount in millilitres or grams.</p>
+  $('#view').innerHTML=`<section class="card"><h2>Which prescriptions do you take?</h2><p class="q-help">Type a drug name and strength, such as “atorvastatin 20”, “Eliquis 5” or “levothyroxine 50 mcg”, then pick the match. Enter how many tablets or capsules you fill every 30 days. For liquids, injection pens, creams and inhalers, enter the amount in millilitres or grams.</p>
   <div class="search"><input type="text" id="dq" placeholder="Search drugs" aria-label="Search drugs" autocomplete="off"><ul class="hits" id="dh" hidden></ul></div>
   <div id="rxl">${rxList()}</div>${nav(true,'Continue',S.rx.length>0)}</section>`;
   const bindList=()=>{ $('#rxl').innerHTML=rxList(); $('#next').disabled=!S.rx.length;
     $('#rxl').querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{S.rx.splice(+b.dataset.rm,1);touched();save();bindList()});
     $('#rxl').querySelectorAll('input').forEach(i=>i.onchange=()=>{S.rx[+i.dataset.k].q=Math.max(1,Math.min(999,+i.value||30));touched();save()}); };
-  $('#dq').oninput=e=>{const t=e.target.value.toLowerCase().split(/\s+/).filter(Boolean),h=$('#dh');
+  $('#dq').oninput=e=>{const t=drugTokens(e.target.value),h=$('#dh');
     if(!t.join('').length||t.join('').length<2){h.hidden=true;return}
-    let out=[];for(let i=0;i<D.drugs.length;i++){const n=D.drugs[i][1].toLowerCase();if(t.every(w=>n.includes(w)))out.push(i)}
+    const tests=t.map(tokenTest);let out=[];for(let i=0;i<HAY.length;i++){const n=HAY[i];if(tests.every(f=>f(n)))out.push(i)}
     const rank=i=>{const l=drugLabel(D.drugs[i]).toLowerCase();return (l.startsWith(t[0])?0:1000)+l.length};out=out.sort((x,y)=>rank(x)-rank(y)).slice(0,40);
-    h.hidden=false;h.innerHTML=out.length?out.map(i=>`<li><button data-i="${i}">${esc(drugLabel(D.drugs[i]))}</button></li>`).join(''):'<li><button disabled>No match on any California plan’s drug list</button></li>';
+    h.hidden=false;h.innerHTML=out.length?out.map(i=>`<li><button data-i="${i}">${esc(drugLabel(D.drugs[i]))}${MCG[i]?` <span class="small muted">· ${MCG[i].join(', ')} mcg</span>`:''}</button></li>`).join(''):'<li><button disabled>No match on any California plan’s drug list</button></li>';
     h.querySelectorAll('[data-i]').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if(!S.rx.some(r=>r.i===i))S.rx.push({i,q:30});touched();save();$('#dq').value='';h.hidden=true;bindList()}) };
   bindList(); bindNav();
 }
