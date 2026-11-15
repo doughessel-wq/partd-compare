@@ -91,6 +91,13 @@ dl.kv dt{color:var(--muted)} dl.kv dd{margin:0;text-align:right;font-variant-num
 .plans label{display:flex;gap:8px;align-items:center;font-size:.9rem;cursor:pointer}
 .plans input{width:18px;height:18px;accent-color:var(--accent)}
 details{font-size:.92rem} details p{margin-top:8px;max-width:75ch}
+.batch .tw{overflow-x:auto}
+.batch table{border-collapse:collapse;width:100%;min-width:760px;font-size:.9rem}
+.batch th,.batch td{border-top:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+.batch thead th{border-top:0;font-family:var(--display)}
+.batch tr.cur td{background:var(--soft)}
+.batch .q{border:1.5px solid var(--accent);border-radius:12px;padding:16px;display:grid;gap:10px}
+.batch ul{margin:0;padding-left:18px}
 .mail .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 16px}
 .mail label{display:grid;gap:4px;font-size:.93rem}
 .mail input{width:100%}
@@ -263,6 +270,7 @@ function bindNew(){document.querySelectorAll('.newc').forEach(w=>{const ask=()=>
 function touched(){S.example=false}
 
 function render(){
+  if(BATCH){$('#steps').innerHTML='';vBatch();return}
   $('#steps').innerHTML=STEPS.map((s,i)=>`<li class="${i<S.step?'done':i===S.step?'cur':''}"><button data-s="${i}" ${i===S.step?'aria-current="step"':''}>${i+1}. ${s}</button></li>`).join('');
   $('#steps').querySelectorAll('button').forEach(b=>b.onclick=()=>{const n=+b.dataset.s;if(n<=S.step||ready(n))go(n)});
   [vLoc,vType,vHelp,vRx,vPh,vRes][S.step]();
@@ -273,7 +281,8 @@ function vLoc(){
   const cs=D.zips[S.zip]||[]; if(cs.length&&!cs.includes(S.county))S.county=cs[0]; if(!cs.length)S.county=null;
   $('#view').innerHTML=`<section class="card">${exBanner()}<h2>What is your ZIP code?</h2><p class="q-help">Plans are offered by county. This tool covers California only.</p>
   <div class="row"><input class="zip num" id="zip" type="text" inputmode="numeric" maxlength="5" autocomplete="postal-code" aria-label="ZIP code" value="${esc(S.zip||'')}"><span id="zipmsg" class="muted"></span></div>
-  <div id="cty"></div>${nav(false,'Continue',!!S.county)}</section>`;
+  <div id="cty"></div>${nav(false,'Continue',!!S.county)}
+  ${CAN_FILE?`<div style="border-top:1px solid var(--line);padding-top:14px"><p class="small muted" style="margin-bottom:8px">Have a list of people in Excel?</p><button class="btn ghost" id="batch">Batch mode</button></div>`:''}</section>`;
   const upd=()=>{const z=$('#zip').value.trim();S.zip=z;const c=D.zips[z]||[];
     if(z.length===5&&!c.length){S.county=null;$('#zipmsg').textContent='This ZIP code is not in the California data.'}
     else $('#zipmsg').textContent=c.length===1?c[0]+' County':'';
@@ -282,6 +291,7 @@ function vLoc(){
     $('#cty').querySelectorAll('input').forEach(i=>i.onchange=()=>{S.county=i.value;save()});
     $('#next').disabled=!S.county;save()};
   $('#zip').oninput=()=>{touched();upd()}; upd(); bindNav(); bindEx();
+  const bb=$('#batch'); if(bb)bb.onclick=()=>{BATCH={people:[],note:''};render();window.scrollTo(0,0)};
 }
 function radios(name,opts,cur){return `<div class="opts">${opts.map(o=>`<label class="opt"><input type="radio" name="${name}" value="${o[0]}" ${o[0]===cur?'checked':''}><span><b>${o[1]}</b><span class="muted small">${o[2]||''}</span></span></label>`).join('')}</div>`}
 function vType(){
@@ -483,7 +493,7 @@ const starText=p=>p.star!=null?p.star+' of 5 stars ('+p.starKind+')':(p.starNote
 const drugPlain=(e,x)=>{const top=x.tier==null?(x.unk?'No price on file':usd(x.total,2)+' for the year'):(x.unk?'Cannot be estimated':usd(x.total,2)+' for the year');
   const fl=flagTexts(x).map((f,i)=>x.over&&i===0&&x.flags&1?f+' (you entered '+qNum(x.q)+' per 30 days, over the limit)':f);
   return top+'\n'+tierPay(e,x)+(x.d[3]?' - insulin, capped at $35 a month':'')+(fl.length?'\n'+fl.join(', '):'')};
-function summaryPdf(es){
+function summaryPdf(es,list){
   const yr=D.meta.year, ph=S.ph!=null?D.pharm[S.ph]:null, d=new Pdf(), full=d.W-2*d.M, c0=132, cw=(full-c0)/Math.max(es.length,1);
   d.para('Part D plan comparison - '+yr,{size:17,bold:true,gap:2});
   d.para('Prepared for: '+(CLIENT.name||'______________________________')+'      '+today(),{size:10,gap:2});
@@ -509,6 +519,8 @@ function summaryPdf(es){
   d.need(64+es.length*28); d.heading('Your drug costs month by month');
   const mw=(full-96)/12;
   d.table([['',...['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']],...es.map(e=>[e.plan.name,...e.months.map(m=>usd(m,0))])],[96,...Array(12).fill(mw)],{head:true,size:7.5});
+  if(list&&list.length){d.need(70);d.heading('All '+list.length+' plans, lowest estimated cost first');
+    d.table([['Plan','Star rating','Premium a month','Your drug costs','Estimated total'],...list.map(e=>[e.plan.name,e.plan.star!=null?e.plan.star+' of 5':'Not rated',usd(e.premMo,2),usd(e.drug,0),{t:usd(e.total,0)+(e.unk?' +':''),bold:true}])],[full-4*82,82,82,82,82],{head:true,size:8.5})}
   d.y-=4;
   d.para('These are estimates, not quotes. '+D.meta.priceNote+' Real prices differ by plan and pharmacy.',{size:8,gap:2});
   d.para('Each estimate assumes every drug is filled all year by the method shown, the '+usd(CAP,0)+' yearly cap on covered drug costs and the $35 monthly insulin cap. It leaves out the Part B premium, late-enrollment penalties and medical costs. Plan data: CMS '+yr+' public files. Not affiliated with Medicare.gov. Confirm costs with the plan or at Medicare.gov before enrolling.',{size:8});
@@ -517,7 +529,7 @@ function summaryPdf(es){
 /* The same summary as plain text, short enough to travel in an email link. */
 function summaryText(es){
   const yr=D.meta.year, ph=S.ph!=null?D.pharm[S.ph]:null, L=[];
-  L.push('Hello'+(CLIENT.name?' '+CLIENT.name.trim().split(/\s+/)[0]:'')+',','','Here is your Part D plan comparison for '+yr+' ('+S.zip+', '+S.county+' County).','');
+  L.push('Hello'+(CLIENT.first||CLIENT.name?' '+(CLIENT.first||CLIENT.name.trim().split(/\s+/)[0]):'')+',','','Here is your Part D plan comparison for '+yr+' ('+S.zip+', '+S.county+' County).','');
   es.forEach((e,i)=>{L.push((es.length>1?(i+1)+'. ':'')+e.plan.name+': about '+usd(e.total,0)+' for the year',
     '   Premium '+usd(e.premMo,2)+' a month. Your share of drug costs '+usd(e.drug,0)+'. Deductible '+(e.lv?'$0 with Extra Help':usd(e.plan.ded,0))+'.',
     '   '+starText(e.plan)+'. Pharmacy: '+stChip[e.st][1].toLowerCase()+'. '+FILL[e.pick]+'.'+(e.pa?' '+e.pa+' of '+e.per.length+' drugs need prior authorization.':'')+(e.covered<e.per.length?' '+(e.per.length-e.covered)+' not covered.':''),'')});
@@ -561,6 +573,165 @@ function bindMail(es){
       <p style="margin-top:6px"><b>${name?'Step 2: ':''}A draft email to ${esc(CLIENT.email.trim())} ${gmail?'opened in Gmail'+(w?'':' could not open because this browser blocked the new tab'):'opened in your mail app'}.</b> ${name?'A web page cannot attach a file to an email, so drag the PDF from your downloads into the draft. ':''}Check it, then press Send. ${gmail&&!w?`<a href="${esc(draftUrl(body,true))}" target="_blank" rel="noopener">Open the draft</a>`:''}</p>
       <p style="margin-top:6px" class="small">If the draft did not open, <a href="${esc(draftUrl(body,false))}">use this computer’s mail app instead</a>, or use “Show the text summary” and paste it into an email yourself.</p></div>`);
   };
+}
+/* ---------- batch mode ----------
+   Reads a spreadsheet of people in the browser (nothing is uploaded), matches each row's drugs and pharmacy to the
+   app's lists, and walks the list one person at a time: a PDF of that person's results and a draft email. */
+const CAN_FILE=(()=>{try{return window.self===window.top}catch(e){return false}})();
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(u){let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=CRC[(c^u[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+const utf8=t=>new TextEncoder().encode(t);
+function zipStore(files){const parts=[],cd=[];let off=0;   /* files: [{name,data:Uint8Array}], stored without compression */
+  for(const f of files){const nm=utf8(f.name),crc=crc32(f.data),n=f.data.length,h=new DataView(new ArrayBuffer(30)),c=new DataView(new ArrayBuffer(46));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(12,0x21,true);h.setUint32(14,crc,true);h.setUint32(18,n,true);h.setUint32(22,n,true);h.setUint16(26,nm.length,true);
+    c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(14,0x21,true);c.setUint32(16,crc,true);c.setUint32(20,n,true);c.setUint32(24,n,true);c.setUint16(28,nm.length,true);c.setUint32(42,off,true);
+    parts.push(new Uint8Array(h.buffer),nm,f.data);cd.push(new Uint8Array(c.buffer),nm);off+=30+nm.length+n}
+  const size=cd.reduce((a,b)=>a+b.length,0),e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,size,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cd,new Uint8Array(e.buffer)])}
+function xlsxBlob(rows){const x=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const col=i=>{let t='';i++;while(i){t=String.fromCharCode(65+(i-1)%26)+t;i=Math.floor((i-1)/26)}return t};
+  const H='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',M='http://schemas.openxmlformats.org/spreadsheetml/2006/main',R='http://schemas.openxmlformats.org/officeDocument/2006/relationships',K='http://schemas.openxmlformats.org/package/2006/';
+  const sheet=H+`<worksheet xmlns="${M}"><cols><col min="1" max="2" width="26" customWidth="1"/><col min="3" max="3" width="9" customWidth="1"/><col min="4" max="4" width="30" customWidth="1"/><col min="5" max="5" width="90" customWidth="1"/></cols><sheetData>`+rows.map((r,ri)=>`<row r="${ri+1}">`+r.map((v,ci)=>`<c r="${col(ci)}${ri+1}" t="inlineStr"><is><t xml:space="preserve">${x(v)}</t></is></c>`).join('')+'</row>').join('')+'</sheetData></worksheet>';
+  const f=(name,t)=>({name,data:utf8(t)});
+  return new Blob([zipStore([
+    f('[Content_Types].xml',H+`<Types xmlns="${K}content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`),
+    f('_rels/.rels',H+`<Relationships xmlns="${K}relationships"><Relationship Id="rId1" Type="${R}/officeDocument" Target="xl/workbook.xml"/></Relationships>`),
+    f('xl/workbook.xml',H+`<workbook xmlns="${M}" xmlns:r="${R}"><sheets><sheet name="People" sheetId="1" r:id="rId1"/></sheets></workbook>`),
+    f('xl/_rels/workbook.xml.rels',H+`<Relationships xmlns="${K}relationships"><Relationship Id="rId1" Type="${R}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`),
+    f('xl/worksheets/sheet1.xml',sheet)])],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}
+function unzip(buf){const dv=new DataView(buf),u=new Uint8Array(buf);let e=buf.byteLength-22;while(e>=0&&dv.getUint32(e,true)!==0x06054b50)e--;
+  if(e<0)throw new Error('This is not an Excel .xlsx file.');
+  const n=dv.getUint16(e+10,true),out={};let q=dv.getUint32(e+16,true);
+  for(let i=0;i<n;i++){const method=dv.getUint16(q+10,true),size=dv.getUint32(q+20,true),nl=dv.getUint16(q+28,true),xl=dv.getUint16(q+30,true),cl=dv.getUint16(q+32,true),lo=dv.getUint32(q+42,true);
+    const start=lo+30+dv.getUint16(lo+26,true)+dv.getUint16(lo+28,true);
+    out[new TextDecoder().decode(u.subarray(q+46,q+46+nl))]={method,data:u.subarray(start,start+size)};q+=46+nl+xl+cl}
+  return out}
+async function zipText(en){if(!en)return null;let b=en.data;
+  if(en.method===8)b=new Uint8Array(await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+  else if(en.method!==0)throw new Error('This Excel file uses a compression this page cannot read. Save it again as .xlsx or .csv.');
+  return new TextDecoder().decode(b)}
+async function readXlsx(buf){const z=unzip(buf),P=t=>new DOMParser().parseFromString(t,'application/xml'),all=(n,t)=>[...n.getElementsByTagNameNS('*',t)];
+  const name=Object.keys(z).filter(k=>/^xl\/worksheets\/sheet\d+\.xml$/.test(k)).sort((a,b)=>a.length-b.length||a.localeCompare(b))[0];
+  if(!name)throw new Error('No worksheet was found in this file.');
+  const st=await zipText(z['xl/sharedStrings.xml']),ss=st?all(P(st),'si').map(si=>all(si,'t').filter(t=>t.parentNode.localName!=='rPh').map(t=>t.textContent).join('')):[];
+  return all(P(await zipText(z[name])),'row').map(row=>{const r=[];
+    for(const c of all(row,'c')){let ci=0;for(const ch of (c.getAttribute('r')||'').replace(/\d+/g,''))ci=ci*26+ch.charCodeAt(0)-64;ci=ci?ci-1:r.length;
+      const t=c.getAttribute('t'),v=all(c,'v')[0];r[ci]=t==='s'?(ss[+(v&&v.textContent)]||''):t==='inlineStr'?all(c,'t').map(x=>x.textContent).join(''):v?v.textContent:''}
+    return Array.from(r,v=>v==null?'':String(v))})}
+function readCsv(text){const rows=[];let row=[],cell='',q=false;text=text.replace(/^﻿/,'');
+  for(let i=0;i<text.length;i++){const ch=text[i];
+    if(q){if(ch==='"'){if(text[i+1]==='"'){cell+='"';i++}else q=false}else cell+=ch}
+    else if(ch==='"')q=true;else if(ch===','){row.push(cell);cell=''}else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&text[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell=''}else cell+=ch}
+  if(cell!==''||row.length){row.push(cell);rows.push(row)}return rows}
+
+let BATCH=null;   /* {file, people:[...], note} - held in memory only, never saved */
+const TEMPLATE=[['Name','Email','ZIP','Pharmacy','Drugs'],
+  ['Pat Example','pat@example.com','95003','Safeway Aptos','atorvastatin 20 mg x 30; lisinopril 10 mg x 30; metformin 500 mg x 60'],
+  ['Sam Sample','sam@example.com','90012','CVS Los Angeles','Eliquis 5 mg x 60; levothyroxine 50 mcg x 30'],
+  ['Lee Placeholder','lee@example.com','92101','','Jardiance 10 mg x 30; amlodipine 5 mg oral tablet x 30']];
+function matchDrug(text){let name=text.trim(),q=30;
+  const m=name.match(/^(.*\S)\s*(?:,|\bx|\bqty\.?:?|#)\s*(\d+(?:\.\d+)?)\s*(?:per\s*30\s*days?|per\s*month|a\s*month|\/\s*30)?\s*$/i);
+  if(m){name=m[1];q=Math.max(1,Math.min(999,+m[2]))}
+  const t=drugTokens(name);if(!t.length)return null;
+  const tests=t.map(tokenTest),hits=[];for(let i=0;i<HAY.length;i++)if(tests.every(f=>f(HAY[i])))hits.push(i);
+  const rank=i=>{const l=drugLabel(D.drugs[i]).toLowerCase();return (l.startsWith(t[0])?0:1000)+l.length};hits.sort((a,b)=>rank(a)-rank(b));
+  const i=hits.length?hits[0]:null;
+  const lead=h=>drugLabel(D.drugs[h]).toLowerCase().startsWith(t[0]);
+  return {typed:text.trim(),i,q,n:hits.length,unsure:i!=null&&(!lead(i)||hits.filter(h=>lead(h)&&!/ \/ /.test(D.drugs[h][1])).length>1)}}
+function matchPharm(text,zip){const t=text.toLowerCase().split(/[\s,]+/).filter(Boolean);if(!t.length)return {i:null,n:0};
+  const hits=[];for(let i=0;i<D.pharm.length;i++){const p=D.pharm[i],n=(p[0]+' '+p[1]+' '+p[2]+' '+p[3]).toLowerCase();if(t.every(w=>n.includes(w)))hits.push(i)}
+  hits.sort((a,b)=>(miles(zip,D.pharm[a][3])??1e9)-(miles(zip,D.pharm[b][3])??1e9)||a-b);return {i:hits.length?hits[0]:null,n:hits.length}}
+function batchParse(rows,file){
+  const hi=rows.findIndex(r=>r.some(c=>/zip|postal/i.test(c)));
+  if(hi<0)throw new Error('No column called “ZIP” was found. Use the template’s column names.');
+  const head=rows[hi].map(c=>c.trim()),find=re=>head.findIndex(c=>re.test(c)),cFirst=find(/^first/i),cName=[find(/^(full\s*)?name$/i),find(/client|participant|member|beneficiary/i),head.findIndex((c,i)=>/name/i.test(c)&&i!==cFirst)].find(i=>i>=0)??-1,cMail=head.findIndex(c=>/^e-?mail(\s*address)?$/i.test(c))>=0?head.findIndex(c=>/^e-?mail(\s*address)?$/i.test(c)):find(/e-?mail/i),cZip=find(/zip|postal/i),cPh=find(/pharm/i);
+  const cDrugs=head.map((c,i)=>/drug|medic|prescri|^rx/i.test(c)?i:-1).filter(i=>i>=0);
+  if(!cDrugs.length)throw new Error('No column called “Drugs” was found. Use the template’s column names.');
+  const people=[];
+  rows.slice(hi+1).forEach((r,k)=>{const g=i=>i>=0&&r[i]!=null?String(r[i]).trim():'';
+    if(!r.some(c=>String(c).trim()))return;
+    const zip=g(cZip).replace(/\.0+$/,'').replace(/\D/g,'').slice(0,5).padStart(5,'0'),counties=D.zips[zip]||[];
+    const drugs=cDrugs.flatMap(i=>g(i).split(/[;\n]+/)).map(v=>v.trim()).filter(Boolean).map(matchDrug).filter(Boolean);
+    const seen=new Set(),ok=drugs.filter(d=>d.i!=null&&!seen.has(d.i)&&seen.add(d.i));
+    const phText=g(cPh),ph=counties.length?matchPharm(phText,zip):{i:null,n:0},email=g(cMail),issues=[];
+    let block=null;
+    if(!counties.length)block='ZIP code '+(g(cZip)||'(blank)')+' is not in the California data';
+    else if(!ok.length)block='None of the drugs could be matched';
+    drugs.filter(d=>d.i==null).forEach(d=>issues.push('No match for “'+d.typed+'”, left out'));
+    drugs.filter(d=>d.unsure).forEach(d=>issues.push('Check the match for “'+d.typed+'”'));
+    if(phText&&ph.i==null&&counties.length)issues.push('Pharmacy “'+phText+'” not found, standard costs used');
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))issues.push(email?'Email address looks wrong, PDF only':'No email address, PDF only');
+    let name=g(cName);const lf=name.match(/^([^,]+),\s*(.+)$/);if(lf)name=lf[2]+' '+lf[1];
+    if(!name&&g(cFirst))name=g(cFirst);
+    people.push({row:hi+2+k,name,first:g(cFirst),email,emailOk:/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),zip,county:counties[0]||null,phText,ph:ph.i,drugs,ok,issues,block,done:null})});
+  if(!people.length)throw new Error('The file has headings but no people under them.');
+  return {file,people,note:''}}
+/* Run the normal estimate for one person from the list: Part D drug plans, no help with costs, one-month fills. */
+function withPerson(p,fn){const keepS=S,keepC=CLIENT;
+  S=Object.assign({},S,{zip:p.zip,county:p.county,type:'pdp',help:'none',lvl:null,dsnp:null,snp:false,fill:'r30',rx:p.ok.map(d=>({i:d.i,q:d.q})),ph:p.ph,cmp:[]});
+  CLIENT={name:p.name,email:p.email,first:p.first};
+  try{const list=plansFor().map(estimateAll).sort((a,b)=>a.total-b.total);return fn(list,list.slice(0,2))}finally{S=keepS;CLIENT=keepC}}
+const batchPdfName=p=>pdfName().replace(/\.pdf$/,'-row'+p.row+'.pdf');
+function batchRun(p){   /* one click: this person's PDF, then their draft email */
+  return withPerson(p,(list,es)=>{let name=null;
+    try{name=batchPdfName(p);saveBlob(summaryPdf(es,list),name)}catch(err){name=null}
+    let opened=false;
+    if(p.emailOk){const text=summaryText(es),body=name?text+'\n\nThe full comparison is in the attached PDF.':text;opened=!!window.open(draftUrl(body,true),senderGet()?'_blank':'_self')||!senderGet()}
+    p.done={pdf:name,draft:p.emailOk?(opened?'opened':'blocked'):'none'};return p.done})}
+async function batchZip(){const files=[];
+  for(const p of BATCH.people.filter(x=>!x.block)){const f=withPerson(p,(list,es)=>({name:batchPdfName(p),blob:summaryPdf(es,list)}));files.push({name:f.name,data:new Uint8Array(await f.blob.arrayBuffer())})}
+  saveBlob(new Blob([zipStore(files)],{type:'application/zip'}),'Part-D-comparisons-'+new Date().toISOString().slice(0,10)+'.zip');return files.length}
+function batchCsv(){const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"',rows=[['Row','Name','Email','ZIP','County','Pharmacy used','Drugs used','Lowest-cost plan','Estimated total','Second plan','Estimated total','Notes']];
+  for(const p of BATCH.people){const r=p.block?null:withPerson(p,(list,es)=>es);
+    rows.push([p.row,p.name,p.email,p.zip,p.county||'',p.ph!=null?D.pharm[p.ph][0]+', '+D.pharm[p.ph][2]:'',p.ok.map(d=>drugLabel(D.drugs[d.i])+' x '+d.q).join('; '),r&&r[0]?r[0].plan.name:'',r&&r[0]?Math.round(r[0].total):'',r&&r[1]?r[1].plan.name:'',r&&r[1]?Math.round(r[1].total):'',[p.block,...p.issues].filter(Boolean).join('; ')])}
+  saveBlob(new Blob(['﻿'+rows.map(r=>r.map(q).join(',')).join('\r\n')],{type:'text/csv'}),'Part-D-batch-results-'+new Date().toISOString().slice(0,10)+'.csv')}
+function vBatch(){
+  const B=BATCH,P=B.people||[],ready=P.filter(p=>!p.block),next=ready.find(p=>!p.done),doneN=ready.filter(p=>p.done).length;
+  const senderBox=`<label style="display:grid;gap:4px;max-width:420px">Your Gmail address (the sender) <input type="text" id="sender" inputmode="email" autocomplete="email" placeholder="you@gmail.com" value="${esc(senderGet())}"><span class="small muted">Remembered on this device only. Leave blank to use this computer’s mail app.</span></label>`;
+  const head=`<div class="row end"><h2>Batch mode</h2><button class="btn ghost" id="bexit">Back to one client at a time</button></div>`;
+  if(!P.length){
+    $('#view').innerHTML=`<section class="card batch">${head}
+    <p class="q-help">Load an Excel file with one person per row. The page works through the list one person at a time, saving a PDF of each person’s results and opening a draft email to them. Everyone is assumed to get no help with costs, and results are for Part D drug plans.</p>
+    <div><h3>Columns</h3><ul><li><b>Name</b> (or <b>Client</b>, with an optional <b>First Name</b>) and <b>Email</b></li><li><b>ZIP</b>: a California ZIP code</li><li><b>Pharmacy</b>: a name and city or ZIP, such as “Safeway Aptos”. Leave blank for none.</li><li><b>Drugs</b>: each drug with its strength, then “x” and the quantity per 30 days, separated by semicolons. For example: atorvastatin 20 mg x 30; Eliquis 5 mg x 60</li></ul></div>
+    <div class="row"><button class="btn ghost" id="btpl">Download the Excel template</button></div>
+    <label style="display:grid;gap:6px"><b>Choose the file (.xlsx or .csv)</b><input type="file" id="bfile" accept=".xlsx,.csv"></label>
+    <div id="bmsg" aria-live="polite">${B.note||''}</div>
+    <p class="small muted">The file is read by this page in your browser. It is not uploaded anywhere and is not kept after you close or reload the page.</p></section>`;
+  }else{
+    const cell=p=>p.ok.map(d=>`${esc(drugLabel(D.drugs[d.i]))} × ${qNum(d.q)}${d.unsure?' <span class="chip warn">check</span>':''}<br><span class="small muted">from “${esc(d.typed)}”</span>`).join('<br>')||'<span class="muted">none</span>';
+    const status=p=>p.block?`<span class="chip bad">Skipped</span><br><span class="small">${esc(p.block)}</span>`:p.done?`<span class="chip good">Done</span><br><span class="small muted">${p.done.pdf?'PDF saved':'No PDF'}${p.done.draft==='opened'?', draft opened':p.done.draft==='blocked'?', draft blocked by the browser':', no email'}</span>`:`<span class="chip plain">Ready</span>`;
+    $('#view').innerHTML=`<section class="card batch">${head}
+    <p><b>${esc(B.file)}</b>: ${P.length} ${P.length===1?'person':'people'}, ${ready.length} ready${P.length-ready.length?', '+(P.length-ready.length)+' skipped':''}${P.some(p=>p.issues.length)?', '+P.filter(p=>!p.block&&p.issues.length).length+' with something to check':''}. ${doneN} of ${ready.length} done.</p>
+    ${senderBox}
+    <div class="q">${next?`<h3>Next: ${esc(next.name||'Row '+next.row)} <span class="muted" style="font-weight:400">(${doneN+1} of ${ready.length})</span></h3>
+      <p class="small">${next.emailOk?'Saves the PDF and opens a draft email to '+esc(next.email)+'.':'Saves the PDF only, because there is no usable email address.'} ${next.issues.length?'To check: '+next.issues.map(esc).join('; ')+'.':''}</p>
+      <div class="row"><button class="btn" id="bnext">${next.emailOk?'PDF then Email':'Save PDF'} for ${esc(next.name||'row '+next.row)}</button><button class="btn link" id="bskip">Skip this person</button></div>`
+      :`<h3>All ${ready.length} done</h3><p class="small">Drag each PDF from your downloads into its draft, check it, and send.</p>`}
+      <div id="bmsg" aria-live="polite">${B.note||''}</div></div>
+    <div class="row"><button class="btn ghost" id="bzip">Download all ${ready.length} PDFs as one zip file</button><button class="btn ghost" id="bcsv">Download a results table</button><button class="btn link" id="bnew">Load a different file</button></div>
+    <div class="tw"><table><thead><tr><th>Row</th><th>Person</th><th>ZIP</th><th>Pharmacy</th><th>Drugs matched</th><th>To check</th><th>Status</th><th></th></tr></thead><tbody>
+    ${P.map((p,k)=>`<tr class="${p===next?'cur':''}"><td>${p.row}</td><td>${esc(p.name)||'<span class="muted">no name</span>'}<br><span class="small muted">${esc(p.email)}</span></td><td>${esc(p.zip)}<br><span class="small muted">${esc(p.county||'')}</span></td>
+      <td>${p.ph!=null?esc(D.pharm[p.ph][0])+'<br><span class="small muted">'+esc(D.pharm[p.ph][2])+' '+esc(D.pharm[p.ph][3])+'</span>':'<span class="muted">none</span>'}</td><td>${cell(p)}</td>
+      <td class="small">${p.issues.map(esc).join('<br>')}</td><td>${status(p)}</td><td>${p.block?'':`<button class="btn link" data-bi="${k}">${p.done?'Again':'Do now'}</button>`}</td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="small muted">A web page cannot attach files or send email. Each PDF goes to your downloads and each draft opens for you to attach the PDF and send. Nothing is uploaded, and the list is not kept after you close or reload the page.</p></section>`;
+  }
+  $('#bexit').onclick=()=>{BATCH=null;render()};
+  const msg=m=>{B.note=m;const e=$('#bmsg');if(e)e.innerHTML=m};
+  const sd=$('#sender');if(sd)sd.onchange=e=>senderSet(e.target.value.trim());
+  const tp=$('#btpl');if(tp)tp.onclick=()=>saveBlob(xlsxBlob(TEMPLATE),'Part-D-batch-template.xlsx');
+  const bf=$('#bfile');if(bf)bf.onchange=async()=>{const f=bf.files[0];if(!f)return;
+    try{const rows=/\.csv$/i.test(f.name)?readCsv(await f.text()):await readXlsx(await f.arrayBuffer());BATCH=batchParse(rows,f.name);vBatch();window.scrollTo(0,0)}
+    catch(err){msg(`<p class="banner warn"><b>That file could not be read.</b> ${esc(err.message||String(err))}</p>`)}};
+  const report=(p,d)=>`<p class="banner ${d.pdf&&d.draft!=='blocked'?'ex':'warn'}"><b>${esc(p.name||'Row '+p.row)}:</b> ${d.pdf?'PDF saved as '+esc(d.pdf)+'.':'The PDF could not be created, so the email carries the text summary only.'} ${d.draft==='opened'?'Draft email opened; drag the PDF into it.':d.draft==='blocked'?'The browser blocked the draft’s new tab. Allow pop-ups for this site, then use “Again” on this row.':'No draft, because there is no usable email address.'}</p>`;
+  const run=p=>{if(sd)senderSet(sd.value.trim());const d=batchRun(p);B.note=report(p,d);vBatch();const n=$('#bnext');if(n)n.focus()};
+  const bn=$('#bnext');if(bn)bn.onclick=()=>run(next);
+  const bs=$('#bskip');if(bs)bs.onclick=()=>{next.done={pdf:null,draft:'none'};next.block='Skipped by you';B.note='';vBatch()};
+  document.querySelectorAll('[data-bi]').forEach(x=>x.onclick=()=>run(P[+x.dataset.bi]));
+  const bz=$('#bzip');if(bz)bz.onclick=async()=>{bz.disabled=true;try{const n=await batchZip();msg(`<p class="banner ex">Saved ${n} PDFs in one zip file to your downloads.</p>`)}catch(err){msg('<p class="banner warn">The zip file could not be created.</p>')}bz.disabled=false};
+  const bc=$('#bcsv');if(bc)bc.onclick=()=>batchCsv();
+  const bw=$('#bnew');if(bw)bw.onclick=()=>{BATCH={people:[],note:''};vBatch()};
 }
 function printDoc(es){
   const yr=D.meta.year, lv=lisLevel(), ph=S.ph!=null?D.pharm[S.ph]:null;
@@ -660,6 +831,7 @@ function vRes(){
     <p>Plans, deductibles, drug lists, tiers, copays and pharmacy networks come from the CMS {{YEAR}} Prescription Drug Plan Formulary and Pharmacy Network file (${esc(D.meta.planFile)}). Premiums come from the CMS {{YEAR}} landscape file (${esc(D.meta.landscapeFile)}). Star ratings are the CMS {{YEAR}} Star Ratings: the Part D rating for drug plans and the overall rating for Medicare Advantage plans.</p>
     <p><b>Drug prices are estimates.</b> ${esc(D.meta.priceNote)} Real prices differ by plan and pharmacy, which matters most for drugs with a percentage cost share and before the deductible is met.</p>
     <p><b>Ways to fill.</b> Each plan is estimated three ways: a 30-day fill every month at your pharmacy, a 90-day fill every three months at your pharmacy, and a 90-day fill every three months from the plan’s mail-order pharmacy (its preferred mail pharmacy where it has one). A drug the plan does not offer as a 90-day fill stays on monthly fills. A 90-day fill is priced at three times the 30-day price, the insulin cap is $35 for each month supplied, and with Extra Help a 90-day fill costs one copay. Your doctor has to write the prescription for 90 days.</p>
+    <p><b>Batch mode.</b> On the first step, “Batch mode” reads an Excel or CSV list of people in your browser and estimates Part D drug plans for each, assuming no help with costs. Drugs and pharmacies are matched from the text in the file to the closest entry in this tool’s lists, and the review table shows every match. The file is not uploaded or stored.</p>
     <p><b>Emailing a comparison.</b> “PDF then Email” makes the PDF in your browser and opens a draft in your own email; this page sends nothing itself and does not store the client’s name or email address. The sender address is kept only in this browser.</p>
     <p><b>Star ratings.</b> The breakdown shows CMS’s {{YEAR}} Star Ratings data tables as published: summary ratings, the nine rated areas, and each measure’s stars and result with the period it was measured over. Ratings are given per contract, not per plan. Plans too new or too small to be measured show CMS’s own wording.</p>
     <p><b>Tiers.</b> The tier shown for each drug is the one in the plan’s CMS formulary file. The comparison of two plans lists each drug’s tier, what the plan charges for it and the yearly cost on each plan, and marks drugs that are on different tiers. CMS’s file gives tier numbers but not the plans’ names for them.</p>
