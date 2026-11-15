@@ -493,17 +493,18 @@ const starText=p=>p.star!=null?p.star+' of 5 stars ('+p.starKind+')':(p.starNote
 const drugPlain=(e,x)=>{const top=x.tier==null?(x.unk?'No price on file':usd(x.total,2)+' for the year'):(x.unk?'Cannot be estimated':usd(x.total,2)+' for the year');
   const fl=flagTexts(x).map((f,i)=>x.over&&i===0&&x.flags&1?f+' (you entered '+qNum(x.q)+' per 30 days, over the limit)':f);
   return top+'\n'+tierPay(e,x)+(x.d[3]?' - insulin, capped at $35 a month':'')+(fl.length?'\n'+fl.join(', '):'')};
+const qtyText=(d,q)=>{const m=d[1].match(/^(\d*\.?\d+) ML /i),n=m?q/+m[1]:0;return (m&&n>=1&&Math.abs(n-Math.round(n))<0.01?Math.round(n)+' x '+m[1]+' mL':qNum(q))+' per 30 days'};
 function summaryPdf(es,list){
   const yr=D.meta.year, ph=S.ph!=null?D.pharm[S.ph]:null, d=new Pdf(), full=d.W-2*d.M, c0=132, cw=(full-c0)/Math.max(es.length,1);
   d.para('Part D plan comparison - '+yr,{size:17,bold:true,gap:2});
   d.para('Prepared for: '+(CLIENT.name||'______________________________')+'      '+today(),{size:10,gap:2});
   d.heading('Your answers');
   d.table([[{t:'Location',bold:true},S.zip+' - '+S.county+' County, California'],[{t:'Coverage',bold:true},{pdp:'Part D drug plans',ma:'Medicare Advantage plans with drug coverage',both:'Part D drug plans and Medicare Advantage plans'}[S.type]],
-    [{t:'Help with costs',bold:true},helpText()],[{t:'Pharmacy',bold:true},ph?ph[0]+', '+ph[1]+', '+ph[2]+' '+ph[3]:'None chosen. Standard in-network costs used.']],[c0,full-c0]);
+    [{t:'Help with costs',bold:true},helpText()],[{t:'Pharmacy',bold:true},ph?ph[0]+', '+ph[1]+', '+ph[2]+' '+ph[3]:CLIENT.mail?'Mail order':'None chosen. Standard in-network costs used.']],[c0,full-c0]);
   if(!es.length){d.para('No plans are selected to compare.');return d.blob()}
   d.heading(es.length===2?'The two plans compared':'Plan summary');
   const row=(l,f,bold)=>[{t:l,bold:true},...es.map(e=>({t:f(e),bold}))];
-  d.table([['',...es.map(e=>e.plan.name+'\n'+e.plan.org+' - '+(e.plan.type==='PDP'?'Part D drug plan':'Medicare Advantage')+' - '+e.plan.id)],
+  d.table([['',...es.map(e=>e.plan.name+(CLIENT.current===e.plan.id?' (your current plan)':'')+'\n'+e.plan.org+' - '+(e.plan.type==='PDP'?'Part D drug plan':'Medicare Advantage')+' - '+e.plan.id)],
     row('Estimated total for '+yr,e=>usd(e.total,0)+(e.unk?' + unpriced drugs':''),true),
     row('Star rating',e=>starText(e.plan)),
     row('Premium',e=>usd(e.premMo,2)+' a month - '+usd(e.prem,2)+' for the year'),
@@ -511,11 +512,11 @@ function summaryPdf(es,list){
     row('How prescriptions are filled',e=>FILL[e.pick]),
     row('Other ways to fill',e=>waysRows(e,(l,v,n,on)=>on?'':l+': '+(v||n)+(v&&n?' ('+n+')':'')).filter(Boolean).join('\n')),
     row('Drug deductible',e=>e.lv?'$0 with Extra Help':usd(e.plan.ded,0)),
-    row('Your pharmacy',e=>stChip[e.st][1]+(e.st==='out'?'\n'+oonNote(e,true):'')),
+    row('Your pharmacy',e=>CLIENT.mail&&e.st==='none'?'Mail order':stChip[e.st][1]+(e.st==='out'?'\n'+oonNote(e,true):'')),
     row('Drugs on the plan\'s list',e=>e.covered+' of '+e.per.length),
     row('Need prior authorization',e=>e.pa?e.pa+' of '+e.per.length+': '+e.per.filter(x=>x.tier!=null&&x.flags&2).map(x=>drugLabel(x.d)).join('; '):'None')],[c0,...es.map(()=>cw)],{head:true});
   d.heading('Your prescriptions on each plan');
-  d.table([['Prescription',...es.map(e=>e.plan.name)],...S.rx.map((r,j)=>[{t:drugLabel(D.drugs[r.i])+mcgNote(D.drugs[r.i])+'\n'+r.q+' per 30 days'},...es.map(e=>drugPlain(e,e.per[j]))])],[c0,...es.map(()=>cw)],{head:true,size:8.5});
+  d.table([['Prescription',...es.map(e=>e.plan.name)],...S.rx.map((r,j)=>[{t:drugLabel(D.drugs[r.i])+mcgNote(D.drugs[r.i])+'\n'+qtyText(D.drugs[r.i],r.q)},...es.map(e=>drugPlain(e,e.per[j]))])],[c0,...es.map(()=>cw)],{head:true,size:8.5});
   d.need(64+es.length*28); d.heading('Your drug costs month by month');
   const mw=(full-96)/12;
   d.table([['',...['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']],...es.map(e=>[e.plan.name,...e.months.map(m=>usd(m,0))])],[96,...Array(12).fill(mw)],{head:true,size:7.5});
@@ -530,12 +531,14 @@ function summaryPdf(es,list){
 function summaryText(es){
   const yr=D.meta.year, ph=S.ph!=null?D.pharm[S.ph]:null, L=[];
   L.push('Hello'+(CLIENT.first||CLIENT.name?' '+(CLIENT.first||CLIENT.name.trim().split(/\s+/)[0]):'')+',','','Here is your Part D plan comparison for '+yr+' ('+S.zip+', '+S.county+' County).','');
-  es.forEach((e,i)=>{L.push((es.length>1?(i+1)+'. ':'')+e.plan.name+': about '+usd(e.total,0)+' for the year',
+  const cur=CLIENT.current&&es.find(e=>e.plan.id===CLIENT.current);
+  if(cur)L.push(cur===es[0]?'Your current plan, '+cur.plan.name+', is the lowest-cost plan in this comparison.':'Your current plan is '+cur.plan.name+'. '+es[0].plan.name+' is estimated to cost '+usd(cur.total-es[0].total,0)+' less for the year.','');
+  es.forEach((e,i)=>{L.push((es.length>1?(i+1)+'. ':'')+e.plan.name+(CLIENT.current===e.plan.id?' (your current plan)':'')+': about '+usd(e.total,0)+' for the year',
     '   Premium '+usd(e.premMo,2)+' a month. Your share of drug costs '+usd(e.drug,0)+'. Deductible '+(e.lv?'$0 with Extra Help':usd(e.plan.ded,0))+'.',
-    '   '+starText(e.plan)+'. Pharmacy: '+stChip[e.st][1].toLowerCase()+'. '+FILL[e.pick]+'.'+(e.pa?' '+e.pa+' of '+e.per.length+' drugs need prior authorization.':'')+(e.covered<e.per.length?' '+(e.per.length-e.covered)+' not covered.':''),'')});
-  let rx=S.rx.map(r=>drugLabel(D.drugs[r.i])+' ('+r.q+' per 30 days)');
+    '   '+starText(e.plan)+'. '+(CLIENT.mail?'':'Pharmacy: '+stChip[e.st][1].toLowerCase()+'. ')+FILL[e.pick]+'.'+(e.pa?' '+e.pa+' of '+e.per.length+' drugs need prior authorization.':'')+(e.covered<e.per.length?' '+(e.per.length-e.covered)+' not covered.':''),'')});
+  let rx=S.rx.map(r=>drugLabel(D.drugs[r.i])+' ('+qtyText(D.drugs[r.i],r.q)+')');
   if(rx.length>8)rx=[...rx.slice(0,8),'and '+(rx.length-8)+' more'];
-  L.push('Your prescriptions: '+rx.join('; ')+'.','Pharmacy: '+(ph?ph[0]+', '+ph[2]:'none chosen')+'. Help with costs: '+helpText(),'',
+  L.push('Your prescriptions: '+rx.join('; ')+'.','Pharmacy: '+(ph?ph[0]+', '+ph[2]:CLIENT.mail?'mail order':'none chosen')+'. Help with costs: '+helpText(),'',
     'These are estimates from CMS public data, not quotes. Please confirm costs with the plan or at Medicare.gov before enrolling.');
   return L.join('\n').replace(/[’‘]/g,"'");
 }
@@ -630,48 +633,67 @@ const TEMPLATE=[['Name','Email','ZIP','Pharmacy','Drugs'],
   ['Pat Example','pat@example.com','95003','Safeway Aptos','atorvastatin 20 mg x 30; lisinopril 10 mg x 30; metformin 500 mg x 60'],
   ['Sam Sample','sam@example.com','90012','CVS Los Angeles','Eliquis 5 mg x 60; levothyroxine 50 mcg x 30'],
   ['Lee Placeholder','lee@example.com','92101','','Jardiance 10 mg x 30; amlodipine 5 mg oral tablet x 30']];
-function matchDrug(text){let name=text.trim(),q=30;
+/* Total strength of a product, for picking the lowest dose: "0.67 ML dupilumab 150 MG/ML ..." is 100 mg; "... 0.025 MG ..." is 0.025 mg. */
+function doseOf(name){const n=name.toLowerCase(),pk=n.match(/^(\d*\.?\d+) ml .*?(\d*\.?\d+) (?:mg|unt|meq)\/ml/);if(pk)return +pk[1]*+pk[2];
+  const m=n.match(/(\d*\.?\d+) (mg|unt|meq|mcg)/);return m?+m[1]/(m[2]==='mcg'?1000:1):Infinity}
+const packMl=name=>{const m=name.match(/^(\d*\.?\d+) ML /i);return m?+m[1]:null};   /* a pen, syringe or vial sold as one unit */
+function matchDrug(text){let name=text.trim(),q=null;
   const m=name.match(/^(.*\S)\s*(?:,|\bx|\bqty\.?:?|#)\s*(\d+(?:\.\d+)?)\s*(?:per\s*30\s*days?|per\s*month|a\s*month|\/\s*30)?\s*$/i);
-  if(m){name=m[1];q=Math.max(1,Math.min(999,+m[2]))}
+  if(m){name=m[1];q=Math.max(0.01,Math.min(999,+m[2]))}
   const t=drugTokens(name);if(!t.length)return null;
   const tests=t.map(tokenTest),hits=[];for(let i=0;i<HAY.length;i++)if(tests.every(f=>f(HAY[i])))hits.push(i);
-  const rank=i=>{const l=drugLabel(D.drugs[i]).toLowerCase();return (l.startsWith(t[0])?0:1000)+l.length};hits.sort((a,b)=>rank(a)-rank(b));
-  const i=hits.length?hits[0]:null;
-  const lead=h=>drugLabel(D.drugs[h]).toLowerCase().startsWith(t[0]);
-  return {typed:text.trim(),i,q,n:hits.length,unsure:i!=null&&(!lead(i)||hits.filter(h=>lead(h)&&!/ \/ /.test(D.drugs[h][1])).length>1)}}
+  const lead=h=>drugLabel(D.drugs[h]).toLowerCase().startsWith(t[0]),single=h=>!/ \/ /.test(D.drugs[h][1]);
+  const rank=i=>(lead(i)?0:1000)+drugLabel(D.drugs[i]).length;hits.sort((a,b)=>rank(a)-rank(b));
+  let i=hits.length?hits[0]:null,lowest=false;
+  if(i!=null&&!/\d/.test(name)){   /* no strength given: take the lowest dose of that drug */
+    const pool=hits.filter(h=>lead(h)&&single(h)),from=pool.length?pool:hits;
+    i=from.slice().sort((a,b)=>doseOf(D.drugs[a][1])-doseOf(D.drugs[b][1])||rank(a)-rank(b))[0];lowest=true}
+  const qAssumed=q==null&&i!=null;if(q==null)q=i!=null&&packMl(D.drugs[i][1])!=null?packMl(D.drugs[i][1]):30;
+  return {typed:text.trim(),i,q,n:hits.length,lowest,qAssumed,unsure:i!=null&&!lowest&&(!lead(i)||hits.filter(h=>lead(h)&&single(h)).length>1)}}
 function matchPharm(text,zip){const t=text.toLowerCase().split(/[\s,]+/).filter(Boolean);if(!t.length)return {i:null,n:0};
   const hits=[];for(let i=0;i<D.pharm.length;i++){const p=D.pharm[i],n=(p[0]+' '+p[1]+' '+p[2]+' '+p[3]).toLowerCase();if(t.every(w=>n.includes(w)))hits.push(i)}
   hits.sort((a,b)=>(miles(zip,D.pharm[a][3])??1e9)-(miles(zip,D.pharm[b][3])??1e9)||a-b);return {i:hits.length?hits[0]:null,n:hits.length}}
+const planKey=t=>String(t).toLowerCase().replace(/\((pdp|hmo|ppo)[^)]*\)/g,'').replace(/[^a-z0-9]+/g,' ').trim();
 function batchParse(rows,file){
   const hi=rows.findIndex(r=>r.some(c=>/zip|postal/i.test(c)));
   if(hi<0)throw new Error('No column called “ZIP” was found. Use the template’s column names.');
-  const head=rows[hi].map(c=>c.trim()),find=re=>head.findIndex(c=>re.test(c)),cFirst=find(/^first/i),cName=[find(/^(full\s*)?name$/i),find(/client|participant|member|beneficiary/i),head.findIndex((c,i)=>/name/i.test(c)&&i!==cFirst)].find(i=>i>=0)??-1,cMail=head.findIndex(c=>/^e-?mail(\s*address)?$/i.test(c))>=0?head.findIndex(c=>/^e-?mail(\s*address)?$/i.test(c)):find(/e-?mail/i),cZip=find(/zip|postal/i),cPh=find(/pharm/i);
-  const cDrugs=head.map((c,i)=>/drug|medic|prescri|^rx/i.test(c)?i:-1).filter(i=>i>=0);
+  const head=rows[hi].map(c=>String(c).trim()),find=re=>head.findIndex(c=>re.test(c)),exact=re=>{const i=find(re);return i};
+  const cFirst=find(/^first/i),cName=[find(/^(full\s*)?name$/i),find(/client|participant|member|beneficiary/i),head.findIndex((c,i)=>/name/i.test(c)&&i!==cFirst)].find(i=>i>=0)??-1;
+  const cMail=exact(/^e-?mail(\s*address)?$/i)>=0?exact(/^e-?mail(\s*address)?$/i):find(/e-?mail/i),cZip=find(/zip|postal/i),cPh=exact(/^(preferred\s*)?pharmacy$/i)>=0?exact(/^(preferred\s*)?pharmacy$/i):find(/pharm/i),cCur=find(/^current\s*plan$/i);
+  const cDrugs=head.map((c,i)=>/^(drugs?|medications?|prescriptions?|rx|drug\s*list)(\s*\d+)?$/i.test(c)?i:-1).filter(i=>i>=0);
   if(!cDrugs.length)throw new Error('No column called “Drugs” was found. Use the template’s column names.');
-  const people=[];
+  const pdps=D.plans.filter(x=>x.type==='PDP'),people=[];
   rows.slice(hi+1).forEach((r,k)=>{const g=i=>i>=0&&r[i]!=null?String(r[i]).trim():'';
-    if(!r.some(c=>String(c).trim()))return;
+    const drugText=cDrugs.map(g).filter(Boolean),email=g(cMail);
+    if(!g(cZip)&&!drugText.length&&!email)return;   /* blank and total rows */
     const zip=g(cZip).replace(/\.0+$/,'').replace(/\D/g,'').slice(0,5).padStart(5,'0'),counties=D.zips[zip]||[];
-    const drugs=cDrugs.flatMap(i=>g(i).split(/[;\n]+/)).map(v=>v.trim()).filter(Boolean).map(matchDrug).filter(Boolean);
+    /* drugs are separated by semicolons, new lines or commas; a comma followed by a number is a quantity instead */
+    const drugs=drugText.flatMap(v=>v.split(/[;\n]+|,(?!\s*\d+(?:\.\d+)?\s*(?:per\b|a\s*month|\/|$))/)).map(v=>v.trim()).filter(Boolean).map(matchDrug).filter(Boolean);
     const seen=new Set(),ok=drugs.filter(d=>d.i!=null&&!seen.has(d.i)&&seen.add(d.i));
-    const phText=g(cPh),ph=counties.length?matchPharm(phText,zip):{i:null,n:0},email=g(cMail),issues=[];
+    const phText=g(cPh),mail=/mail/i.test(phText),ph=counties.length&&!mail?matchPharm(phText,zip):{i:null,n:0},emailOk=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),issues=[];
+    const curText=g(cCur),ck=planKey(curText),cur=ck?pdps.find(x=>planKey(x.name)===ck)||pdps.find(x=>planKey(x.name).includes(ck)||ck.includes(planKey(x.name))):null;
     let block=null;
     if(!counties.length)block='ZIP code '+(g(cZip)||'(blank)')+' is not in the California data';
     else if(!ok.length)block='None of the drugs could be matched';
     drugs.filter(d=>d.i==null).forEach(d=>issues.push('No match for “'+d.typed+'”, left out'));
     drugs.filter(d=>d.unsure).forEach(d=>issues.push('Check the match for “'+d.typed+'”'));
-    if(phText&&ph.i==null&&counties.length)issues.push('Pharmacy “'+phText+'” not found, standard costs used');
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))issues.push(email?'Email address looks wrong, PDF only':'No email address, PDF only');
+    if(ok.some(d=>d.lowest))issues.push('No strength given for '+ok.filter(d=>d.lowest).map(d=>'“'+d.typed+'”').join(', ')+': lowest dose used');
+    if(ok.some(d=>d.qAssumed))issues.push('No quantity given for '+ok.filter(d=>d.qAssumed).map(d=>'“'+d.typed+'”').join(', ')+': assumed '+ok.filter(d=>d.qAssumed).map(d=>qNum(d.q)).join(', ')+' per 30 days');
+    if(phText&&!mail&&counties.length){if(ph.i==null)issues.push('Pharmacy “'+phText+'” not found, standard costs used');else if(ph.n>1)issues.push('“'+phText+'” matched '+ph.n+' pharmacies: nearest one used')}
+    if(curText&&!cur)issues.push('Current plan “'+curText+'” is not one of the Part D drug plans');
+    if(!emailOk)issues.push(email?'Email address looks wrong, PDF only':'No email address, PDF only');
     let name=g(cName);const lf=name.match(/^([^,]+),\s*(.+)$/);if(lf)name=lf[2]+' '+lf[1];
     if(!name&&g(cFirst))name=g(cFirst);
-    people.push({row:hi+2+k,name,first:g(cFirst),email,emailOk:/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),zip,county:counties[0]||null,phText,ph:ph.i,drugs,ok,issues,block,done:null})});
+    people.push({row:hi+2+k,name,first:g(cFirst),email,emailOk,zip,county:counties[0]||null,phText,mail,ph:ph.i,curText,cur:cur?cur.id:null,drugs,ok,issues,block,done:null})});
   if(!people.length)throw new Error('The file has headings but no people under them.');
   return {file,people,note:''}}
 /* Run the normal estimate for one person from the list: Part D drug plans, no help with costs, one-month fills. */
-function withPerson(p,fn){const keepS=S,keepC=CLIENT;
-  S=Object.assign({},S,{zip:p.zip,county:p.county,type:'pdp',help:'none',lvl:null,dsnp:null,snp:false,fill:'r30',rx:p.ok.map(d=>({i:d.i,q:d.q})),ph:p.ph,cmp:[]});
-  CLIENT={name:p.name,email:p.email,first:p.first};
-  try{const list=plansFor().map(estimateAll).sort((a,b)=>a.total-b.total);return fn(list,list.slice(0,2))}finally{S=keepS;CLIENT=keepC}}
+function withPerson(p,fn){const keepS=S,keepC=CLIENT;   /* "Mail order" as the pharmacy means three-month fills by mail */
+  S=Object.assign({},S,{zip:p.zip,county:p.county,type:'pdp',help:'none',lvl:null,dsnp:null,snp:false,fill:p.mail?'m90':'r30',rx:p.ok.map(d=>({i:d.i,q:d.q})),ph:p.ph,cmp:[]});
+  CLIENT={name:p.name,email:p.email,first:p.first,current:p.cur,mail:p.mail};
+  try{const list=plansFor().map(estimateAll).sort((a,b)=>a.total-b.total),cur=list.find(e=>e.plan.id===p.cur);
+    /* with a current plan on file, compare it with the lowest-cost plan; otherwise the two lowest */
+    return fn(list,cur&&cur!==list[0]?[list[0],cur]:list.slice(0,2))}finally{S=keepS;CLIENT=keepC}}
 const batchPdfName=p=>pdfName().replace(/\.pdf$/,'-row'+p.row+'.pdf');
 function batchRun(p){   /* one click: this person's PDF, then their draft email */
   return withPerson(p,(list,es)=>{let name=null;
@@ -693,7 +715,7 @@ function vBatch(){
   if(!P.length){
     $('#view').innerHTML=`<section class="card batch">${head}
     <p class="q-help">Load an Excel file with one person per row. The page works through the list one person at a time, saving a PDF of each person’s results and opening a draft email to them. Everyone is assumed to get no help with costs, and results are for Part D drug plans.</p>
-    <div><h3>Columns</h3><ul><li><b>Name</b> (or <b>Client</b>, with an optional <b>First Name</b>) and <b>Email</b></li><li><b>ZIP</b>: a California ZIP code</li><li><b>Pharmacy</b>: a name and city or ZIP, such as “Safeway Aptos”. Leave blank for none.</li><li><b>Drugs</b>: each drug with its strength, then “x” and the quantity per 30 days, separated by semicolons. For example: atorvastatin 20 mg x 30; Eliquis 5 mg x 60</li></ul></div>
+    <div><h3>Columns</h3><ul><li><b>Name</b> (or <b>Client</b>, with an optional <b>First Name</b>) and <b>Email</b></li><li><b>ZIP</b>: a California ZIP code</li><li><b>Pharmacy</b>: a name and city or ZIP, such as “Safeway Aptos”. Leave blank for none.</li><li><b>Drugs</b>: each drug with its strength, then “x” and the quantity per 30 days, separated by semicolons or commas. For example: atorvastatin 20 mg x 30; Eliquis 5 mg x 60. With no strength the lowest dose is used; with no quantity, 30 a month (or one pen or syringe).</li><li><b>Current Plan</b> (optional): compared with the lowest-cost plan. A pharmacy of “Mail order” uses three-month fills by mail.</li></ul></div>
     <div class="row"><button class="btn ghost" id="btpl">Download the Excel template</button></div>
     <label style="display:grid;gap:6px"><b>Choose the file (.xlsx or .csv)</b><input type="file" id="bfile" accept=".xlsx,.csv"></label>
     <div id="bmsg" aria-live="polite">${B.note||''}</div>
@@ -711,8 +733,8 @@ function vBatch(){
       <div id="bmsg" aria-live="polite">${B.note||''}</div></div>
     <div class="row"><button class="btn ghost" id="bzip">Download all ${ready.length} PDFs as one zip file</button><button class="btn ghost" id="bcsv">Download a results table</button><button class="btn link" id="bnew">Load a different file</button></div>
     <div class="tw"><table><thead><tr><th>Row</th><th>Person</th><th>ZIP</th><th>Pharmacy</th><th>Drugs matched</th><th>To check</th><th>Status</th><th></th></tr></thead><tbody>
-    ${P.map((p,k)=>`<tr class="${p===next?'cur':''}"><td>${p.row}</td><td>${esc(p.name)||'<span class="muted">no name</span>'}<br><span class="small muted">${esc(p.email)}</span></td><td>${esc(p.zip)}<br><span class="small muted">${esc(p.county||'')}</span></td>
-      <td>${p.ph!=null?esc(D.pharm[p.ph][0])+'<br><span class="small muted">'+esc(D.pharm[p.ph][2])+' '+esc(D.pharm[p.ph][3])+'</span>':'<span class="muted">none</span>'}</td><td>${cell(p)}</td>
+    ${P.map((p,k)=>`<tr class="${p===next?'cur':''}"><td>${p.row}</td><td>${esc(p.name)||'<span class="muted">no name</span>'}<br><span class="small muted">${esc(p.email)}</span>${p.curText?`<br><span class="small muted">Current plan: ${esc(p.curText)}</span>`:''}</td><td>${esc(p.zip)}<br><span class="small muted">${esc(p.county||'')}</span></td>
+      <td>${p.mail?'Mail order<br><span class="small muted">three-month fills</span>':p.ph!=null?esc(D.pharm[p.ph][0])+'<br><span class="small muted">'+esc(D.pharm[p.ph][2])+' '+esc(D.pharm[p.ph][3])+'</span>':'<span class="muted">none</span>'}</td><td>${cell(p)}</td>
       <td class="small">${p.issues.map(esc).join('<br>')}</td><td>${status(p)}</td><td>${p.block?'':`<button class="btn link" data-bi="${k}">${p.done?'Again':'Do now'}</button>`}</td></tr>`).join('')}
     </tbody></table></div>
     <p class="small muted">A web page cannot attach files or send email. Each PDF goes to your downloads and each draft opens for you to attach the PDF and send. Nothing is uploaded, and the list is not kept after you close or reload the page.</p></section>`;
